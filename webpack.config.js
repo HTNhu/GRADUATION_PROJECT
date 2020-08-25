@@ -20,7 +20,7 @@ const WorkboxPlugin = require('workbox-webpack-plugin')
 
 const handler = (percentage, message, moduleProgress, activeModule) => {
   if (percentage !== 1) {
-    process.stdout.clearScreenDown()
+    // process?.stdout?.clearScreenDown()
     readline.cursorTo(process.stdout, 0)
     process.stdout.write(
       `${chalk.bgGreenBright(
