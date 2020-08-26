@@ -1,74 +1,59 @@
-/* eslint-disable react/prop-types */
-import React from 'react'
-import { Card, Carousel } from 'antd'
-
-import 'antd/dist/antd.css'
+import React, { useEffect, useState } from 'react'
+import { Carousel } from 'antd'
+import * as firebase from 'firebase/app'
 import './index.scss'
-import { useHistory } from 'react-router-dom'
+import HighlightItem from './highlightItem'
 
-const { Meta } = Card
+function HighlightPost(props) {
+  const { isBroken, history } = props
+  const [data, setData] = useState([])
 
-// const srcImg ='https://gw.alipayobjects.com/zos/rmsportal/JiqGstEfoWAOHiTxclqi.png'
-const data = [
-  {
-    title: 'Ant 1'
-  },
-  {
-    title: 'Ant 2'
-  },
-  {
-    title: 'Ant 3'
-  },
-  {
-    title: 'Ant 4'
-  },
-  {
-    title: 'Ant 5'
-  },
-  {
-    title: 'Ant 6'
-  }
-]
-function HighlightPost (props) {
-  const { isBroken } = props
-  const history = useHistory()
+  useEffect(() => {
+    firebase
+      .database()
+      .ref(`posts`)
+      .once('value', snapshot => {
+        const temp = snapshot.val()
+          ? Object.keys(snapshot.val()).map(key => ({
+              ...snapshot.val()[key],
+              countComment: snapshot.val()[key].comments
+                ? Object.keys(snapshot.val()[key].comments).length
+                : 0,
+              countReaction: snapshot.val()[key].reactions
+                ? Object.keys(snapshot.val()[key].reactions)
+                    .map(keyA => snapshot.val()[key].reactions[keyA].count)
+                    .reduce((a, b) => a + b)
+                : 0,
+              id: key
+            }))
+          : []
+        const data = temp
+          .sort(
+            (a, b) =>
+              b.countComment +
+              b.countReaction -
+              (a.countComment + a.countReaction)
+          )
+          ?.slice(0, 6)
+        setData(data)
+      })
+  }, [])
   return (
-    // <div className='site-card-wrapper'>
     <Carousel
       slidesToShow={isBroken ? 2 : 4}
       autoplay
-      // focusOnSelect
-      // dots={false}
+      autoplaySpeed={1500}
+      style={{ marginBottom: 10 }}
+      swipeToSlide
     >
       {data.map((item, idx) => {
         return (
           <div key={idx}>
-            <Card
-              onClick={() => history.push('/postdetail/11')}
-              style={{ margin: '10px 0 0 10px' }}
-              cover={
-                <img
-                  alt='example'
-                  src='https://gw.alipayobjects.com/zos/rmsportal/JiqGstEfoWAOHiTxclqi.png'
-                />
-              }
-              // actions={[
-              //   <SettingOutlined key='setting' />,
-              //   <EditOutlined key='edit' />,
-              //   <EllipsisOutlined key='ellipsis' />,
-              // ]}
-            >
-              <Meta
-                //   avatar={<Avatar size={64} shape='square' src='https://gw.alipayobjects.com/zos/rmsportal/JiqGstEfoWAOHiTxclqi.png' />}
-                title={item.title}
-                description='This is the description'
-              />
-            </Card>
+            <HighlightItem history={history} key={idx} item={item?.id} />
           </div>
         )
       })}
     </Carousel>
-    // </div>
   )
 }
 export default HighlightPost

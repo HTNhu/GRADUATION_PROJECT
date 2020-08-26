@@ -1,14 +1,12 @@
-import React, { useState, useEffect } from 'react'
-import { useContext } from 'react'
-import { brokenContext } from '../../layouts/MainLayout'
+import React, { useState, useEffect, useContext } from 'react'
 import { IContext } from '@tools'
-import firebase from 'firebase/app'
+import * as firebase from 'firebase/app'
 import { BellOutlined } from '@ant-design/icons'
-import { Tooltip, Popover, Badge, Button } from 'antd'
+import { Tooltip, Popover, Badge, Button, List } from 'antd'
 import './index.scss'
+import NotiList from './notiList'
 
-const Noti = (props) => {
-  const isBroken = useContext(brokenContext)
+const Noti = props => {
   const [notifications, setNotifications] = useState([])
   const [visible, setVisible] = useState(false)
   const { me } = useContext(IContext)
@@ -21,69 +19,72 @@ const Noti = (props) => {
     firebase
       .database()
       .ref('notifications/' + me?._id)
+      .orderByKey()
+      .limitToLast(50)
       .on('value', snapshot => {
-        temp = Object.keys(snapshot.val()).map(key => ({
-          ...snapshot.val()[key],
-          id: key
-        }))
+        temp = snapshot.val()
+          ? Object.keys(snapshot.val()).map(key => ({
+              ...snapshot.val()[key],
+              id: key
+            }))
+          : []
 
-        setNotifications(temp)
+        setNotifications(temp.reverse())
       })
   }
 
-  return isBroken ? (
-    <>
-      <BellOutlined />
-      <span>Thông báo</span>
-    </>
-  ) : (
-    <Tooltip title="Thông báo" placement="bottomRight">
+  return (
+    // !props.isBroken && (
       <Popover
+      destroyTooltipOnHide
+      popupVisible
+      onVisibleChange={() => setVisible(!visible)}
         placement="bottomLeft"
-        className="noti-popover"
+        id="noti-popover"
+        overlayStyle={{ position: 'fixed' }}
+        content={
+          notifications?.length === 0 ? (
+            <p>Chưa có thông báo nào</p>
+          ) : (
+            <List
+              className="demo-loadmore-list"
+              // loading={initLoading}
+              itemLayout="horizontal"
+              dataSource={notifications}
+              renderItem={noti => (
+                <NotiList
+                  setVisible={setVisible}
+                  noti={noti}
+                  history={history}
+                ></NotiList>
+              )}
+            />
+          )
+        }
         visible={visible}
-        content={notifications.map((noti, idx) => (
-          <div
-            className="noti-item"
-            style={{
-              backgroundColor: noti.seen
-                ? 'initial'
-                : 'rgba(214, 234, 248, 0.8)'
-            }}
-            key={idx}
-            onClick={() => {
-              firebase
-                .database()
-                .ref('notifications/' + me?._id + '/' + noti.id)
-                .update({
-                  seen: true
-                })
-              history.push(noti.link)
-              setVisible(false)
-            }}
-          >
-            <p style={{ display: 'inline' }}>{noti.content.trim()}</p>
-          </div>
-        ))}
         title="Thông Báo"
         trigger="click"
       >
-        <Button
-         onClick={() => setVisible(!visible)}
-          className="btn-round"
-          shape="circle"
-          icon={
-            <Badge
-              size={1}
-              overflowCount={9}
-              count={notifications.filter(item => item.seen === false).length}
-            >
-              <BellOutlined />
-            </Badge>
-          }
-        />
+        <Tooltip title="Thông báo" placement="bottomRight">
+          <Button
+            onClick={() => setVisible(!visible)}
+            className="btn-round"
+            shape="circle"
+            icon={
+              <Badge
+                size={1}
+                overflowCount={9}
+                count={
+                  notifications.filter(item => item.seen === false)?.length
+                }
+              >
+                <BellOutlined />
+              </Badge>
+            }
+          />
+        </Tooltip>
       </Popover>
-    </Tooltip>
-  )
+    )
+  // )
 }
 export default Noti

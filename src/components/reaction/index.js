@@ -1,167 +1,174 @@
 /* eslint-disable react/prop-types */
-import React, { useState, useEffect, useContext } from 'react'
-import { Popover, Tooltip } from 'antd'
+import React, { useState, useContext, useLayoutEffect } from 'react'
+import { Popover, Tooltip, Space } from 'antd'
 import { Emoji } from 'emoji-mart'
 import { LikeOutlined } from '@ant-design/icons'
-import firebase from 'firebase/app'
+import * as firebase from 'firebase/app'
 import './index.css'
 import { IContext } from '@tools'
 
 const emojiData = [
-  {
-    emoji: 'heart_eyes',
-    text: 'Yêu thích',
-    count: 3
-  },
   {
     emoji: '+1',
     text: 'Thích',
     count: 7
   },
   {
+    emoji: 'heart_eyes',
+    text: 'Yêu thích',
+    count: 3
+  },
+  {
     emoji: 'open_mouth',
-    text: 'wow',
+    text: 'Wow',
     count: 9
   },
   {
     emoji: 'joy',
-    text: 'he he',
+    text: 'Hihi',
     count: 43
   }
 ]
 // const me._id = 'tuikyne'
 function Reaction(props) {
-  const [chosenmoji, setChosenEnmoji] = useState('')
-  const [reactions, setReactions] = useState([])
-  const [sumReactions, setSSumReactions] = useState(0)
-  const { idPost } = props
-  const { me } = useContext(IContext)
+  const { idPost, postItem, currentEmoji, setCurrentEmoji, reactions } = props
 
-  useEffect(() => {
-    getReactionPost()
-  }, [])
-  const getReactionPost = () => {
-    firebase
-      .database()
-      .ref(`posts/${idPost}/reactions`)
-      .on('value', snapshot => {
-        // var mess = (snapshot.val() && snapshot.val().mess1) || 'Anonymous';
-        const temp =
-          Object.keys(snapshot.val()).map(key => ({
-            ...snapshot.val()[key],
-            id: key
-          })) || []
-        // temp.sort((a, b) => b.timestamp - a.timestamp)
-        setReactions(temp)
-        let count = 0
-        temp.map(item => {
-          if (!item.users) return
-          const idx = item.users.findIndex(user => user === me._id)
-          if (idx !== -1) {
-            setChosenEnmoji(item.id)
-          }
-          count += item.count
+  const { me, isAuth, openLoginModal } = useContext(IContext)
+  const updateOrSet = (e, emo) => {
+    const vt = reactions?.findIndex(reaction => reaction.id === e.id)
+    reactions[vt]
+      ? firebase
+          .database()
+          .ref(`posts/${props.idPost}/reactions/` + e.id)
+          .update({
+            count: reactions[vt].count + 1,
+            users: reactions[vt].users
+              ? [...reactions[vt].users, me._id]
+              : [me._id]
+          })
+      : firebase
+          .database()
+          .ref(`posts/${props.idPost}/reactions/` + e.id)
+          .set({
+            count: 1,
+            users: [me._id]
+          })
+    postItem?.createdBy?._id !== me?._id &&
+      firebase
+        .database()
+        .ref(`notifications/${postItem?.createdBy?._id}/${+new Date()}`)
+        .set({
+          action: 'reaction',
+          reciever: postItem?.createdBy?._id,
+          link: `/post-detail/${idPost}`,
+          content: `${me?.firstname} đã ${emo.text} bài viết của bạn`,
+          seen: false,
+          createdAt: +new Date()
         })
-        setSSumReactions(count)
-      })
+  }
+  const onClickEmoji = (e, emo) => {
+    if (currentEmoji !== '') {
+      if (currentEmoji !== e.id) {
+        const idx = reactions.findIndex(
+          reaction => reaction.id === currentEmoji
+        )
+        const arr = reactions[idx]?.users
+        arr?.splice(
+          reactions[idx].users.findIndex(user => user === me._id),
+          1
+        )
+        try {
+          firebase
+            .database()
+            .ref(`posts/${props.idPost}/reactions/` + currentEmoji)
+            .update({
+              count: reactions[idx].count - 1,
+              users: arr
+            })
+          updateOrSet(e, emo)
+        } catch (e) {
+          console.log(e)
+        }
+      }
+    } else {
+      setCurrentEmoji(e.id)
+      updateOrSet(e, emo)
+    }
+    document
+      .getElementById('like-post')
+      .setAttribute('style', 'background-color: #f5f5f5')
   }
   return (
     <Popover
-      className="reaction-popover"
-      content={emojiData.map(e => (
-        <Tooltip key={e.emoji} title={e.text}>
+      overlayClassName="reaction-popover"
+      content={
+        <Space>
+          {emojiData.map(emo => (
+            <Tooltip key={emo.emoji} title={emo.text}>
+              <div style={{ height: 18, width: 18 }}>
+                <Emoji
+                  emoji={emo.emoji}
+                  size={24}
+                  onClick={e =>
+                    isAuth ? onClickEmoji(e, emo) : openLoginModal()
+                  }
+                />
+              </div>
+            </Tooltip>
+          ))}
+        </Space>
+      }
+    >
+      {currentEmoji ? (
+        <Space>
           <Emoji
-            emoji={e.emoji}
-            size={24}
-            onClick={async e => {
-              if (chosenmoji !== '') {
-                const idx = reactions.findIndex(
-                  reaction => reaction.id === chosenmoji
-                )
-                const arr = reactions[idx].users
-                arr.splice(
-                  reactions[idx].users.findIndex(user => user === me._id),
-                  1
-                )
-                console.log(arr, 'arr')
-                try {
-                  await firebase
-                    .database()
-                    .ref(`posts/${props.idPost}/reactions/` + chosenmoji)
-                    .update({
-                      count: reactions[idx].count - 1,
-                      users: arr
-                    })
-                } catch (e) {
-                  console.log(e)
-                }
+            onClick={async () => {
+              const idx = reactions.findIndex(
+                reaction => reaction.id === currentEmoji
+              )
+              const arr = reactions[idx].users
+              arr.splice(
+                reactions[idx].users.findIndex(user => user === me._id),
+                1
+              )
+              try {
+                await firebase
+                  .database()
+                  .ref(`posts/${props.idPost}/reactions/` + currentEmoji)
+                  .update({
+                    count: reactions[idx].count - 1,
+                    users: arr
+                  })
+              } catch (e) {
+                console.log(e)
               }
-              setChosenEnmoji(e.id)
-
-              // reactions.map(async reaction => {
-              const vt = reactions.findIndex(reaction => reaction.id === e.id)
-              reactions[vt]
-                ? await firebase
-                    .database()
-                    .ref(`posts/${props.idPost}/reactions/` + e.id)
-                    .update({
-                      count: reactions[vt].count + 1,
-                      users: reactions[vt].users
-                        ? [...reactions[vt].users, me._id]
-                        : [me._id]
-                    })
-                : await firebase
-                    .database()
-                    .ref(`posts/${props.idPost}/reactions/` + e.id)
-                    .set({
-                      count: 1,
-                      users: [me._id]
-                    })
-              // })
+              setCurrentEmoji('')
               document
                 .getElementById('like-post')
-                .setAttribute('style', 'background-color: #f5f5f5')
+                .setAttribute('style', 'background-color: initial')
             }}
+            emoji={currentEmoji}
+            size={19}
           />
-        </Tooltip>
-      ))}
-    >
-      {chosenmoji ? (
-        <Emoji
-          onClick={async () => {
-            const idx = reactions.findIndex(
-              reaction => reaction.id === chosenmoji
-            )
-            const arr = reactions[idx].users
-            arr.splice(
-              reactions[idx].users.findIndex(user => user === me._id),
-              1
-            )
-            try {
-              await firebase
-                .database()
-                .ref(`posts/${props.idPost}/reactions/` + chosenmoji)
-                .update({
-                  count: reactions[idx].count - 1,
-                  users: arr
-                })
-            } catch (e) {
-              console.log(e)
-            }
-            setChosenEnmoji('')
-            document
-              .getElementById('like-post')
-              .setAttribute('style', 'background-color: initial')
-          }}
-          emoji={chosenmoji}
-          size={19}
-        />
+          {window.innerWidth > 600 && (
+            <span style={{ fontWeight: 'bold', color: 'rgba(0,0,0,0.7)' }}>
+              {emojiData.filter(e => e.emoji === currentEmoji)[0].text}
+            </span>
+          )}
+        </Space>
       ) : (
         <LikeOutlined />
       )}
-      <span style={{ fontWeight: 'bold', color: chosenmoji && '#1890ff' }}>
+      {/* <span
+        style={{
+          marginLeft: 5,
+          fontWeight: 'bold',
+          color: currentEmoji && '#1890ff'
+        }}
+      >
         {sumReactions}
-      </span>
+      </span> */}
+      {/* </Space> */}
     </Popover>
   )
 }

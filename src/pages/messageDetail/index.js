@@ -1,46 +1,64 @@
 /* eslint-disable react/prop-types */
-import React, { useEffect, useState } from 'react'
-import firebase from 'firebase/app'
+import React, { useEffect, useState, useContext } from 'react'
+import * as firebase from 'firebase/app'
 import Message from './Message'
 import moment from 'moment'
 import './index.scss'
-import { CaretLeftOutlined } from '@ant-design/icons'
-import { Card } from 'antd'
-import * as uuid from 'uuid'
-import { InputCustome } from '@components'
+import { ArrowLeftOutlined } from '@ant-design/icons'
+import { Card, Avatar } from 'antd'
+import { InputCustomize } from '@components'
+import { withRouter } from 'react-router-dom'
+import { useQuery } from '@apollo/react-hooks'
+import { IContext } from '@tools'
+import { GET_USER } from '@shared'
 moment().format()
-const MY_USER_ID = 'tuinhune'
-export default function MessageDetail (props) {
+// const MY_USER_ID = 'tuinhune'
+function MessageDetail(props) {
+  const [showMore, setShowMore] = useState(15)
   const [messages, setMessages] = useState([])
-  const { idChat } = props.match.params
+  const { idChat, userId } = props.match.params
+  const { me } = useContext(IContext)
+  const ele = document.getElementsByClassName(
+    `message-list-container-phone ${idChat}`
+  )[0]
   useEffect(() => {
     getMessages()
+    if (ele) ele.scrollTop = ele.scrollHeight
     document.getElementById(`input-custom-${idChat}`).focus()
-  }, [])
-  const getMessages = async () => {
-    firebase.database().ref(`messenger/${idChat}`).on('value', (snapshot) => {
-      // var mess = (snapshot.val() && snapshot.val().mess1) || 'Anonymous';
-      const temp = Object.keys(snapshot.val()).map(key => ({ ...snapshot.val()[key], id: key }))
-      if (window.UndefinedVariable) {
-        Object.assign(window.UndefinedVariable, {})
-      }
-      temp.sort((a, b) => a.timestamp - b.timestamp)
-      setMessages(temp)
-    })
-    const ele = await document.getElementsByClassName(`message-list-container ${idChat}`)[0]
-    ele.scrollTop = ele.scrollHeight
+  }, [ele])
+  useEffect(() => {
+    getMessages()
+  }, [showMore])
+  const { data } = useQuery(GET_USER, { variables: { userId } })
+  const getMessages = () => {
+    firebase
+      .database()
+      .ref(`messenger/${idChat}/listmessages`)
+      .orderByKey()
+      .limitToLast(showMore)
+      .on('value', snapshot => {
+        // var mess = (snapshot.val() && snapshot.val().mess1) || 'Anonymous';
+        const temp = snapshot.val()
+          ? Object.keys(snapshot.val()).map(key => ({
+              ...snapshot.val()[key],
+              id: key
+            }))
+          : []
+        // temp.sort((a, b) => a.timestamp - b.timestamp)
+        setMessages(temp)
+      })
   }
 
   const renderMessages = () => {
     let i = 0
-    const messageCount = messages.length
+    const messageCount = messages?.length
     const tempMessages = []
 
     while (i < messageCount) {
       const previous = messages[i - 1]
       const current = messages[i]
       const next = messages[i + 1]
-      const isMine = current.author === MY_USER_ID
+      const isMine = current.author === me?._id
       const currentMoment = moment(current.timestamp)
       let prevBySameAuthor = false
       let nextBySameAuthor = false
@@ -73,8 +91,11 @@ export default function MessageDetail (props) {
           endsSequence = false
         }
       }
+
       tempMessages.push(
         <Message
+          idChat={idChat}
+          isLast={messageCount - 1 === i}
           key={i}
           isMine={isMine}
           startsSequence={startsSequence}
@@ -87,47 +108,96 @@ export default function MessageDetail (props) {
       // Proceed to the next message.
       i += 1
     }
-
     return tempMessages
   }
-
   const handleSubmit = async (value, imgList) => {
-    const chatId = `${idChat}` + '/'
-    const message = uuid.v4()
     try {
-      await firebase.database().ref('messenger/' + chatId + message).set({
-        id: uuid.v4(),
-        content: { message: value, img: imgList },
-        timestamp: new Date().getTime(),
-        author: 'tuikyne',
-        seen: false,
-        hideWith: []
-      })
+      const message = +new Date()
+      await firebase
+        .database()
+        .ref(`messenger/${idChat}/listmessages/` + message)
+        .update({
+          content: { message: value, img: imgList },
+          timestamp: +new Date(),
+          author: me?._id,
+          seen: false,
+          hideWith: []
+        })
+      await firebase
+        .database()
+        .ref(`messenger/${idChat}`)
+        .update({
+          lastMess: {
+            content: { message: value, img: imgList },
+            timestamp: +new Date(),
+            author: me?._id,
+            seen: false,
+            hideWith: []
+          },
+          lastActivity: +new Date()
+        })
     } catch (error) {
       console.log(error)
     }
-    const ele = document.getElementsByClassName(`message-list-container ${idChat}`)[0]
-    // console.log(ele, 'elemu')
+    const ele = document.getElementsByClassName(
+      `message-list-container-phone ${idChat}`
+    )[0]
     ele.scrollTop = ele.scrollHeight
   }
 
   return (
-    <div className='message-list'>
-
-      <Card title={<>
-        <span style={{ marginLeft: 5 }}>tuinhune</span></>}
-      className='ant-mess'
-      extra={!props.isBroken &&
-      // <div className='delete-messbox'>
-        <CaretLeftOutlined className='delete-messbox' onClick={() => props.history.goBack()} />}
-      // </div>}
-      // style={{ 10 }}
-      actions={[
-        <InputCustome idElement={idChat} onSubmit={handleSubmit} placeholder='Nhạp tin nhắn' key='input'></InputCustome>
-      ]}>
-        <div className={`message-list-container ${idChat}`} >{renderMessages()}</div>
+    <div className="message-list-phone">
+      <Card
+        title={
+          <>
+            <Avatar
+              onClick={() => props.history.push(`/${userId}/info`)}
+              src={data?.getUser?.avatar}
+            ></Avatar>
+            <a
+              onClick={() => props.history.push(`/${userId}/info`)}
+              style={{ marginLeft: 5 }}
+            >
+              {data?.getUser?.firstname}
+            </a>
+          </>
+        }
+        className="ant-mess-phone"
+        extra={
+          <ArrowLeftOutlined
+            className="delete-messbox"
+            onClick={() => props.history.goBack()}
+            style={{ color: '#ccc', fontSize: 20 }}
+          />
+        }
+        actions={[
+          <InputCustomize
+            minRows={1}
+            maxRows={4}
+            idElement={idChat}
+            type="chat"
+            onSubmit={handleSubmit}
+            placeholder="Nhập tin nhắn"
+            key="input"
+          />
+        ]}
+      >
+        <div
+          className={`message-list-container-phone ${idChat}`}
+          onScroll={() => {
+            const ele = document.getElementsByClassName(
+              `message-list-container-phone ${idChat}`
+            )[0]
+            if (showMore <= messages?.length && ele.scrollTop === 0) {
+              setShowMore(showMore + 3)
+              ele.scrollTop = 100
+            }
+          }}
+        >
+          {renderMessages()}
+        </div>
       </Card>
-
     </div>
   )
 }
+export default withRouter(MessageDetail)

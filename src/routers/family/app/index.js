@@ -6,13 +6,25 @@ const FamilyAppRoutes = ({ isAuth }) => {
   const authRoutes = [
     {
       exact: true,
-      path: '/createpost',
+      path: '/:userId/messenger/:idChat',
+      component: 'messageDetail',
+      title: 'Chat'
+    },
+    {
+      exact: true,
+      path: '/messenger',
+      component: 'myMessenger',
+      title: 'Danh sách chat'
+    },
+    {
+      exact: true,
+      path: '/create-post',
       component: 'createPost',
       title: 'Tạo bài viết'
     },
     {
       exact: true,
-      path: '/pagegroup/:groupId',
+      path: '/page-group/:communityId',
       component: 'pageGroup',
       title: 'Cộng đồng'
     },
@@ -24,10 +36,22 @@ const FamilyAppRoutes = ({ isAuth }) => {
     },
     {
       exact: true,
-      path: '/:userId/messenger/:idChat',
-      component: 'messageDetail',
-      title: 'Chat'
+      path: '/search-results',
+      component: 'searchResults',
+      title: 'Kết quả tìm kiếm'
     },
+    {
+      // exact: true,
+      path: '/notify',
+      component: 'notify',
+      title: 'Thông báo'
+    },
+    {
+      // exact: true,
+      path: '/seminars',
+      component: 'seminars',
+      title: 'Hội thảo'
+    }
   ]
 
   const commonRoutes = [
@@ -39,19 +63,25 @@ const FamilyAppRoutes = ({ isAuth }) => {
     },
     {
       exact: true,
+      path: '/communities',
+      component: 'allCommunities',
+      title: 'Cộng đồng'
+    },
+    {
+      exact: true,
       path: '/popular',
       component: 'popularposts',
       title: 'Thịnh hành'
     },
     {
       exact: true,
-      path: '/pagegroup/:groupId',
+      path: '/page-group/:communityId',
       component: 'pageGroup',
       title: 'Cộng đồng'
     },
     {
       exact: false,
-      path: '/postdetail/:postId',
+      path: '/post-detail/:postId',
       component: 'postDetail',
       title: 'Chi tiết bài viết'
     },

@@ -1,231 +1,244 @@
 /* eslint-disable react/prop-types */
-import React, { useState } from 'react'
-import {
-  Card,
-  Avatar,
-  Typography,
-  Button,
-  Menu,
-  Dropdown,
-  notification
-} from 'antd'
-import {
-  CommentOutlined,
-  FlagOutlined,
-  BookOutlined,
-  EllipsisOutlined
-} from '@ant-design/icons'
+import React, { useState, useContext, useEffect } from 'react'
+import { Avatar, Input, Skeleton, Tooltip, Space } from 'antd'
+
 import { withRouter } from 'react-router-dom'
-import { Reaction, SharePost, CommentPost, ModalReport } from '@components'
-import firebase from 'firebase/app'
-const { Meta } = Card
-// var moment = require('moment')
-const data = [
-  {
-    title: 'Ant Design Title 1',
-    groupId: '111',
-    postId: 'post1'
-  },
-  {
-    title: 'Ant Design Title 2',
-    groupId: '222',
-    postId: 'post2'
-  },
-  {
-    title: 'Ant Design Title 3',
-    groupId: '111',
-    postId: 'post3'
-  },
-  {
-    title: 'Ant Design Title 4',
-    groupId: '222',
-    postId: 'post4'
+import {
+  ModalReport,
+  PostNoGroup,
+  JoinBtn,
+  CreatePostDrawer,
+  ModalPreviewImg
+} from '@components'
+
+import gql from 'graphql-tag'
+import { useQuery } from '@apollo/react-hooks'
+import { IContext } from '@tools'
+import {
+  GET_POST_BY_COMMUNITY,
+  CHECK_IS_MEMBER,
+  GET_MEMBERS_BY_COMMUNITY
+} from '@shared'
+import { MainContext } from '../../layouts/MainLayout'
+import ReactionInfo from '../../components/post/reactionInfo'
+import { LoadingOutlined } from '@ant-design/icons'
+import * as firebase from 'firebase/app'
+import ModalMemberInfo from './modalMemberInfo'
+export const GET_COMMUNITY_BY_ID = gql`
+  query communityById($id: String) {
+    communityById(id: $id) {
+      _id
+      name
+      avatar
+      coverPhoto
+    }
   }
-]
-function PageGroup (props) {
-  // const [visibleModalCreate, setVisibleModalCreate] = useState(false)
+`
+
+function PageGroup(props) {
   const [visibleModalReport, setVisibleModalReport] = useState(false)
-  const [showText, setShowText] = useState(false)
-  const nameEl = showText ? 'expand' : 'collapse'
-  const { history } = props
+  const { communityId } = props.match.params
+  const { me } = useContext(IContext)
+  const { isBroken } = useContext(MainContext)
+  const [visibleModalCreate, setVisibleModalCreate] = useState(false)
+  const [visible, setVisible] = useState(false)
+  
+  const [previewImg, setPreviewImg] = useState({
+    isShow: false,
+    imgSrc: ''
+  })
+  const { data, refetch: refetchPostsByCom, loading: loađingPost } = useQuery(
+    GET_POST_BY_COMMUNITY,
+    {
+      variables: { communityId },
+      fetchPolicy: 'no-cache',
+      skip: !communityId
+    }
+  )
+  const { data: dataMems, loading: loadingMems } = useQuery(
+    GET_MEMBERS_BY_COMMUNITY,
+    {
+      variables: { communityId },
+      fetchPolicy: 'no-cache',
+      skip: !communityId
+    }
+  )
+  const { data: dataCommunity, refetch, loading } = useQuery(
+    GET_COMMUNITY_BY_ID,
+    {
+      variables: { id: communityId },
+      fetchPolicy: 'no-cache',
+      skip: !communityId
+    }
+  )
+  const { data: dataIsMember } = useQuery(CHECK_IS_MEMBER, {
+    variables: { id: { userId: me?._id, communityId: communityId } }
+  })
   const handleOk = () => {
     // setVisibleModalCreate(false)
     setVisibleModalReport(false)
   }
   const handleCancel = () => {
-    // setVisibleModalCreate(false)
+    setVisibleModalCreate(false)
     setVisibleModalReport(false)
   }
-  const getSumComment = (idPost) => {
-    let temp
-    firebase.database().ref(`posts/${idPost}/comments`).on('value', (snapshot) => {
-      // var mess = (snapshot.val() && snapshot.val().mess1) || 'Anonymous';
-      temp = Object.keys(snapshot.val()).map(key => ({ ...snapshot.val()[key], id: key }))
-      // return temp.length
-    })
-    return temp ? temp.length : 0
-  }
-  const menu = (
-    <Menu>
-      <Menu.Item key='0'>
-        <div onClick={() => setVisibleModalReport(true)}>
-          <FlagOutlined key='flag' /> Báo cáo bài viết
-        </div>
-      </Menu.Item>
-      <Menu.Item key='1'>
-        <div
-          onClick={() => notification.success({ message: 'Lưu thành công' })}
-        >
-          <BookOutlined />
-          Lưu bài viết
-        </div>
-      </Menu.Item>
-    </Menu>
-  )
-  return (
+  const [dataCount, setDataCount] = useState([])
+  useEffect(() => {
+    firebase
+      .database()
+      .ref(`communities/${communityId}`)
+      .on('value', snapshot => {
+        const temp = snapshot.val()
+        setDataCount(temp)
+      })
+  }, [])
+  return loading ? (
+    <Skeleton active />
+  ) : (
     <>
-      <div>
+      <div
+        style={{
+          height: 250,
+          width: '100%',
+          backgroundColor: 'rgba(255,255,255,0.9)'
+        }}
+        onClick={() => {
+          setPreviewImg({
+            isShow: true,
+            imgSrc: dataCommunity?.communityById?.coverPhoto
+          })
+        }}
+      >
         <img
-          className='cover-img'
+          className="cover-img"
           style={{ objectFit: 'cover', height: 250, width: '100%' }}
-          alt='example'
-          src='https://scontent.fsgn2-2.fna.fbcdn.net/v/t1.0-9/92522573_1498212850342148_3908204202505011200_n.jpg?_nc_cat=100&_nc_sid=85a577&_nc_ohc=Hs7CLNZhiVYAX8UfzYa&_nc_ht=scontent.fsgn2-2.fna&oh=bd39d3ac8da082083ba12c10e4b8870a&oe=5EDC49A8'
+          alt="example"
+          src={dataCommunity?.communityById?.coverPhoto}
         />
       </div>
-      <div style={{ display: 'flex', marginTop: -60, backgroundColor: '#fff' }}>
+      <div
+        style={{
+          display: 'flex',
+          marginTop: -60,
+          backgroundColor: 'rgba(255,255,255,0.6)'
+        }}
+      >
         <Avatar
-          style={{ border: '2px solid black', marginLeft: 10 }}
-          shape='circle'
+          onClick={() => {
+            setPreviewImg({
+              isShow: true,
+              imgSrc: dataCommunity?.communityById?.avatar
+            })
+          }}
+          style={{ border: '2px solid rgba(0,0,0,0.5)', marginLeft: 10 }}
+          shape="square"
           size={120}
-          src='https://scontent.fsgn2-3.fna.fbcdn.net/v/t1.0-9/42509129_1029389683910372_8485576172426493952_n.jpg?_nc_cat=106&_nc_sid=dd9801&_nc_ohc=3By-MUAxPSkAX-vnCzn&_nc_ht=scontent.fsgn2-3.fna&oh=de4871077a93092c361bb222770ed707&oe=5EDD69A3'
+          src={dataCommunity?.communityById?.avatar}
         />
         <div style={{ marginLeft: 10 }}>
-          <p style={{ fontWeight: 'bolder', fontSize: 20, color: '#fff' }}>
-            Chăm sóc bé sinh non
-          </p>
           <p
+            style={{
+              fontWeight: 'bolder',
+              fontSize: 20,
+              color: '#fff',
+              textShadow: '0px 2px 2px rgba(0, 0, 0, 0.8)'
+            }}
+          >
+            {dataCommunity?.communityById?.name}
+          </p>
+          <div
             style={{
               marginTop: -15,
               fontWeight: 'bolder',
               color: '#fff',
-              fontSize: 12
+              fontSize: 12,
+              textShadow: '0px 2px 2px rgba(0, 0, 0, 0.8)'
             }}
           >
             {' '}
-            12k thành viên - 300 bài viết
-          </p>
-          <Button
-            style={{ backgroundColor: 'rgb(0, 152, 218)', color: '#fff' }}
-          >
-            Tham gia
-          </Button>
+            <Space>
+              <Tooltip
+                title={loadingMems ? <LoadingOutlined /> :
+                  <div>
+                    {dataMems?.getMembersByCommunity?.slice(0, 5).map(data => {
+                      return (
+                        <ReactionInfo
+                          type='tooltip'
+                          isBroken={isBroken}
+                          key={data?.user?._id}
+                          userId={data?.user?._id}
+                        />
+                      )
+                    })}
+                    {dataMems?.getMembersByCommunity?.length > 5 && (
+                      <p>{`...và ${
+                        dataMems?.getMembersByCommunity?.length - 5
+                      } nguời khác`}</p>
+                    )}
+                  </div>
+                }
+              >
+                <p onClick={() => setVisible(true)}>{dataCount?.membersCount} thành viên </p>
+              </Tooltip>
+              <p>- {dataCount?.postsCount} bài viết</p>
+            </Space>
+          </div>
+          <JoinBtn
+            id={{ userId: me?._id, communityId: communityId }}
+            history={props.history}
+            refetchDataMemberCount={refetch}
+          ></JoinBtn>
         </div>
       </div>
       <br />
-      {data.map((item, idx) => {
-        const sumCmt = getSumComment(item.postId)
-        return <Card
-          key={idx}
-          title={
-            <div style={{ display: 'flex', justifyContent: 'start' }}>
-              <Avatar
-                onClick={() => history.push(`/pagegroup/${item.groupId}`)}
-                size='large'
-                src='https://zos.alipayobjects.com/rmsportal/ODTLcjxAfvqbxHnVXCYX.png'
-              />
-              <div>
-                <a
-                  onClick={() => history.push('/tuinhune/info')}
-                  style={{ fontWeight: 'bolder', color: 'black' }}
-                >
-                  Tuinhune
-                </a>
-                <p style={{ color: '#9b9b9b', fontSize: 12 }}>
-                  {new Date().toLocaleString()}
-                </p>
-              </div>
-            </div>
-          }
-          extra={
-            <Button
-              style={{ backgroundColor: 'rgb(0, 152, 218)', color: '#fff' }}
-            >
-              Tham gia
-            </Button>
-          }
-          style={{ maxWidth: '100%', marginTop: 16 }}
-          actions={[
-            <div id='like-post' key='like' onDoubleClick={() => console.log('đâsđâsd')}>
-              <Reaction idPost={item.postId}/>
-            </div>,
-            <div key='comment'>
-              <CommentOutlined />
-              <span style={{ fontWeight: 'bold' }}>{sumCmt} </span>
-            </div>,
-            <SharePost key='share' />,
-            <Dropdown
-              key='menu'
-              overlay={menu}
-              trigger={['click']}
-              placement='bottomRight'
-            >
-              <EllipsisOutlined />
-            </Dropdown>,
-            <CommentPost idPost={item.postId} key='commet'></CommentPost>
-          ]}
-        >
-          <Meta
-            title={<a onClick={() => history.push(`/postdetail/${item.postId}`)}>
-              <Typography.Title level={2}>
-                Giảm nóng cho bé mùa hè
-              </Typography.Title></a>
-            }
-            description={
-              <div>
-                <p
-                  // id={showText ? `expand${idx}` : 'collapse'}
-                  className={`content ${nameEl}${idx}`}
-                >
-                  Một trong những ngộ nhận sai lầm về giữ ấm bé yêu là ủ ấm bé.
-                  Bằng cách mặc thật nhiều quần áo thật dày, thật kín. Đây là
-                  cách giữ ấm không đúng, không khoa học. Bé sẽ bị nóng, ra
-                  nhiều mồ hôi và nhiễm lạnh ngược lại, dễ dẫn đến viêm phổi nếu
-                  mẹ mặc quá nhiều áo quần. Nhiều khi mẹ ủ ấm quá mức sẽ khiến
-                  bé bị đột tử do bị bí hơi nữa đấy. Chọn quần áo khi ngủ cho
-                  con sao cho thoải mái nhất, an toàn nhất là đã giúp bé được ủ
-                  ấm thân nhiệt rồi. Nếu mẹ sợ bé lạnh, hãy đắp thêm một lớp
-                  chăn lưới mỏng, nhẹ, loại dùng cho trẻ sơ sinh là bé vừa ấm áp
-                  vừa thoáng khí, thoát mồ hôi. Mẹ nên tránh đồ ngủ có dây buộc,
-                  những họa tiết phụ kiện trang trí khác có thể quấn cổ bé, làm
-                  bé không thở được. Nguồn: internet
-                </p>
-                <a id={`${nameEl}${idx}`} onClick={async () => {
-                  setShowText(!showText)
-                  const content = await document.getElementsByClassName(`expand${idx}`)
-                  const a = await document.getElementById(`expand${idx}`)
-                  // console.log(a, content)
-                  content[0].setAttribute('style', 'height: auto !important')
-                  a.setAttribute('style', 'visibility: hidden')
-                  await setShowText(false)
-                }
-                }>See more </a>
-              </div>
-            }
-          />
-        </Card>
-        }
+      {dataIsMember?.checkIsMember && (
+        <Input.TextArea
+          onClick={() => setVisibleModalCreate(!visibleModalCreate)}
+          style={{
+            margin: '0 auto',
+            marginBottom: 15,
+            resize: 'none',
+            // background: rgb(0, 152, 218)',
+            boxShadow: '0px 0px 5px #1f7fc8'
+          }}
+          placeholder={`${me?.firstname} ơi, hôm nay bạn cần chia sẻ gì ?`}
+          // autoSize={{ minRows: 3, maxRows: 5 }}
+        />
+        // </>
       )}
-
+      {loađingPost ? (
+        <Skeleton active avatar />
+      ) : (
+        data &&
+        data?.postsByCommunity.map((item, idx) => {
+          return (
+            <PostNoGroup
+              refetch={refetchPostsByCom}
+              key={idx}
+              item={item}
+              idx={idx}
+            ></PostNoGroup>
+          )
+        })
+      )}
+      <ModalPreviewImg
+        previewImg={previewImg}
+        onCancel={() => setPreviewImg({ ...previewImg, isShow: false })}
+      />
       <ModalReport
         visible={visibleModalReport}
         handleCancel={handleCancel}
         handleOk={handleOk}
+        isBroken={isBroken}
       ></ModalReport>
-      {/* <ModalCreatePost
+      <CreatePostDrawer
+        refetch={refetchPostsByCom}
+        data={dataCommunity?.communityById}
+        isBroken={isBroken}
         handleCancel={handleCancel}
-        handleOk={handleOk}
         visible={visibleModalCreate}
-      ></ModalCreatePost> */}
+      />
+      <ModalMemberInfo isBroken={isBroken} visible={visible} setVisible={setVisible} members={dataMems?.getMembersByCommunity} />
     </>
   )
 }

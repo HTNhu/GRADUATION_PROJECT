@@ -1,215 +1,174 @@
 /* eslint-disable react/prop-types */
-import React, { useState, useContext } from 'react'
-import firebase from 'firebase/app'
-import {
-  Card,
-  Input,
-  Avatar,
-  Typography,
-  Button,
-  Menu,
-  Dropdown,
-  notification
-} from 'antd'
-import {
-  CommentOutlined,
-  FlagOutlined,
-  BookOutlined,
-  EllipsisOutlined
-} from '@ant-design/icons'
+import React, { useState, useContext, useEffect } from 'react'
+import { Input, Spin, Skeleton } from 'antd'
+
 import { withRouter } from 'react-router-dom'
-import { brokenContext } from '../../layouts/MainLayout'
+import { MainContext } from '../../layouts/MainLayout'
 import './index.scss'
-import { Reaction, HighLightPost, SharePost, CommentPost, ModalReport, ModalCreatePost } from '@components'
+import {
+  HighLightPost,
+  PostHaveGroup,
+  PostNoGroup,
+  CreatePostDrawer
+} from '@components'
 import { IContext } from '@tools'
+import { GET_POSTS } from '@shared'
+import { useQuery } from '@apollo/react-hooks'
 
-const { Meta } = Card
-// var moment = require('moment')
-const data = [
-  {
-    title: 'Ant Design Title 1',
-    groupId: '111',
-    postId: 'post1'
-  },
-  {
-    title: 'Ant Design Title 2',
-    groupId: '222',
-    postId: 'post2'
-  },
-  {
-    title: 'Ant Design Title 3',
-    groupId: '111',
-    postId: 'post3'
-  },
-  {
-    title: 'Ant Design Title 4',
-    groupId: '222',
-    postId: 'post4'
-  }
-]
-const HomePage = (props) => {
-  const isBroken = useContext(brokenContext)
+const HomePage = props => {
+  const { history } = props
+  const { isBroken } = useContext(MainContext)
   const [visibleModalCreate, setVisibleModalCreate] = useState(false)
-  const [visibleModalReport, setVisibleModalReport] = useState(false)
-  const [showText, setShowText] = useState(false)
-
-  const nameEl = showText ? 'expand' : 'collapse'
-  const { me } = useContext(IContext)
-  const handleOk = () => {
-    setVisibleModalCreate(false)
-    setVisibleModalReport(false)
-  }
+  const { me, isAuth } = useContext(IContext)
+  const [quantityPosts, setQuantityPosts] = useState(5)
   const handleCancel = () => {
     setVisibleModalCreate(false)
-    setVisibleModalReport(false)
   }
-  const getSumComment = (idPost) => {
-    let temp
-    firebase.database().ref(`posts/${idPost}/comments`).on('value', (snapshot) => {
-      // var mess = (snapshot.val() && snapshot.val().mess1) || 'Anonymous';
-      temp = Object.keys(snapshot.val()).map(key => ({ ...snapshot.val()[key], id: key }))
-      // return temp.length
-    })
-    return temp ? temp.length : 0
-  }
-  const menu = (
-    <Menu>
-      <Menu.Item key='0'>
-        <div onClick={() => setVisibleModalReport(true)}>
-          <FlagOutlined key='flag' /> Báo cáo bài viết
-        </div>
-      </Menu.Item>
-      <Menu.Item key='1'>
-        <div
-          onClick={() => notification.success({ message: 'Lưu thành công' })}
-        >
-          <BookOutlined />
-          Lưu bài viết
-        </div>
-      </Menu.Item>
-    </Menu>
-  )
-  const { history } = props
-  return (
-    <>
-      <h3>Tạo bài viết</h3>
-      <Input.TextArea
-        onClick={() => setVisibleModalCreate(!visibleModalCreate)}
-        style={{ margin: '0 auto', marginBottom: 10 }}
-        placeholder={`${me?.firstname} ơi, hôm nay bạn cần chia sẻ gì ?`}
-        autoSize={{ minRows: 3, maxRows: 5 }}
-      />
-      <h3>Bài viết từ FAMILY</h3>
-      <HighLightPost isBroken={isBroken}></HighLightPost>
+  const {
+    data: dataPosts,
+    refetch: refetchPosts,
+    loading,
+    fetchMore
+  } = useQuery(GET_POSTS, {
+    variables: { quantity: 5 },
+    fetchPolicy: 'no-cache'
+  })
+  const [loadMore, setLoadMore] = useState(false)
+  const [isEnd, setIsEnd] = useState(false)
+  const [dataPostLoad, setDataPostLoad] = useState(dataPosts)
+  function handleScroll() {
+    if (
+      window.innerHeight + document.documentElement.scrollTop >=
+        document.scrollingElement.scrollHeight &&
+      !isEnd
+    ) {
+      setLoadMore(true)
 
-      {data.map((item, idx) => {
-        const sumComment = getSumComment(item.postId)
-        return <Card
-          key={idx}
-          title={
-            <div style={{ display: 'flex', justifyContent: 'start' }}>
-              <Avatar
-                onClick={() => history.push(`/pagegroup/${item.groupId}`)}
-                size='large'
-                src='https://zos.alipayobjects.com/rmsportal/ODTLcjxAfvqbxHnVXCYX.png'
-              />
-              <div>
-                <a
-                  onClick={() => history.push(`/pagegroup/${item.groupId}`)}
-                  style={{ fontWeight: 'bolder', color: 'black' }}
-                >
-                  Chăm sóc bé từ 0-12 tháng tuổi
-                </a>
-                <p style={{ color: '#9b9b9b', fontSize: 12 }}>
-                  Đăng bởi <span style={{ color: '#003b70' }}>
-                    <a onClick={() => history.push('/tuinhune/info')}> Tuinhune</a> </span>{' '}
-                  - {new Date().toLocaleString()}
-                </p>
-              </div>
-            </div>
-          }
-          extra={
-            <Button
-              style={{ backgroundColor: 'rgb(0, 152, 218)', color: '#fff' }}
-            >
-              Tham gia
-            </Button>
-          }
-          style={{ maxWidth: '100%', marginTop: 16 }}
-          actions={[
-            <div id='like-post' key='like'>
-              <Reaction idPost={item.postId} /></div>,
-            <div key='comment' onClick={() => document.getElementById(`input-custom-${item.postId}`).focus()}>
-              <CommentOutlined onClick={() => document.getElementById(`input-custom-${item.postId}`).focus()}/>
-              <span style={{ marginLeft: 5, fontWeight: 'bold' }}>{sumComment}</span>
-            </div>,
-            <SharePost key='share' />,
-            <Dropdown
-              key='menu'
-              overlay={menu}
-              trigger={['click']}
-              placement='bottomRight'
-            >
-              <EllipsisOutlined />
-            </Dropdown>,
-            <CommentPost idPost={item.postId} key='commet' ></CommentPost>
-          ]}
-        >
-          <Meta
-            title={<a onClick={() => history.push(`/postdetail/${item.postId}`)}>
-              <Typography.Title level={2}>
-                Giảm nóng cho bé mùa hè
-              </Typography.Title></a>
-            }
-            description={
-              <div>
-                <p
-                  // id={showText ? `expand${idx}` : 'collapse'}
-                  className={`content ${nameEl}${idx}`}
-                >
-                  Một trong những ngộ nhận sai lầm về giữ ấm bé yêu là ủ ấm bé.
-                  Bằng cách mặc thật nhiều quần áo thật dày, thật kín. Đây là
-                  cách giữ ấm không đúng, không khoa học. Bé sẽ bị nóng, ra
-                  nhiều mồ hôi và nhiễm lạnh ngược lại, dễ dẫn đến viêm phổi nếu
-                  mẹ mặc quá nhiều áo quần. Nhiều khi mẹ ủ ấm quá mức sẽ khiến
-                  bé bị đột tử do bị bí hơi nữa đấy. Chọn quần áo khi ngủ cho
-                  con sao cho thoải mái nhất, an toàn nhất là đã giúp bé được ủ
-                  ấm thân nhiệt rồi. Nếu mẹ sợ bé lạnh, hãy đắp thêm một lớp
-                  chăn lưới mỏng, nhẹ, loại dùng cho trẻ sơ sinh là bé vừa ấm áp
-                  vừa thoáng khí, thoát mồ hôi. Mẹ nên tránh đồ ngủ có dây buộc,
-                  những họa tiết phụ kiện trang trí khác có thể quấn cổ bé, làm
-                  bé không thở được. Nguồn: internet
-                </p>
-                <a id={`${nameEl}${idx}`} onClick={async () => {
-                  setShowText(!showText)
-                  const content = await document.getElementsByClassName(`expand${idx}`)
-                  const a = await document.getElementById(`expand${idx}`)
-                  // console.log(a, content)
-                  content[0].setAttribute('style', 'height: auto !important')
-                  a.setAttribute('style', 'visibility: hidden')
-                  await setShowText(false)
-                }
-                }>See more </a>
-                <div></div>
-              </div>
-            }
-          />
-        </Card>
+      document.documentElement.scrollTop = loadMore
+        ? document.scrollingElement.scrollHeight
+        : document.documentElement.scrollTop
+    }
+  }
+
+  useEffect(() => {
+    setDataPostLoad(dataPosts)
+    if (dataPosts?.posts?.length < 5) {
+      setIsEnd(true)
+    }
+  }, [dataPosts])
+  useEffect(() => {
+    if (loadMore) {
+      setQuantityPosts(quantityPosts + 5)
+    }
+  }, [loadMore])
+  useEffect(() => {
+    fetchMoreListItems()
+  }, [quantityPosts])
+  const fetchMoreListItems = () => {
+    fetchMore({
+      query: GET_POSTS,
+      variables: {
+        quantity: quantityPosts
+      },
+      updateQuery: (prev, { fetchMoreResult }) => {
+        if (!fetchMoreResult) return prev
+        return Object.assign({}, prev, {
+          posts: [...prev.posts, ...fetchMoreResult.posts]
+        })
       }
-      )}
+    }).then(({ data }) => {
+      if (data?.posts?.length + 5 < quantityPosts) {
+        setLoadMore(false)
+        setIsEnd(true)
+      } else {
+        setDataPostLoad(data)
+        setLoadMore(false)
+      }
+    })
+  }
+  useEffect(() => {
+    if (!isEnd) {
+      window.addEventListener('scroll', handleScroll)
+    }
+    return () => window.removeEventListener('scroll', handleScroll)
+  }, [isEnd])
 
-      <ModalReport
-        visible={visibleModalReport}
-        handleCancel={handleCancel}
-        handleOk={handleOk}
-      ></ModalReport>
-      <ModalCreatePost
+  return (
+    <div id="list-posts">
+      {isAuth && (
+        <>
+          <p
+            style={{
+              fontSize: 16,
+              color: 'rgba(0,0,0,0.6)',
+              fontWeight: 'bold'
+            }}
+          >
+            Tạo bài viết
+          </p>
+          <Input.TextArea
+            onClick={() =>
+              // isBroken
+              //   ? history.push('/create-post')
+              // :
+              setVisibleModalCreate(!visibleModalCreate)
+            }
+            style={{
+              margin: '0 auto',
+              marginBottom: 15,
+              resize: 'none',
+              // background: rgb(0, 152, 218)',
+              boxShadow: '0px 0px 5px #1f7fc8'
+            }}
+            placeholder={`${me?.firstname} ơi, hôm nay bạn cần chia sẻ gì ?`}
+            // autoSize={{ minRows: 3, maxRows: 5 }}
+          />
+        </>
+      )}
+      <p style={{ fontSize: 16, color: 'rgba(0,0,0,0.6)', fontWeight: 'bold' }}>
+        Bài viết từ FAMILY
+      </p>
+      <HighLightPost history={history} isBroken={isBroken}></HighLightPost>
+
+      {loading ? (
+        <Skeleton active />
+      ) : (
+        dataPostLoad?.posts.map((item, idx) => {
+          return item?.community ? (
+            <PostHaveGroup
+              isBroken={isBroken}
+              history={history}
+              refetch={refetchPosts}
+              key={idx}
+              item={item}
+              idx={idx}
+              dataPosts={dataPosts}
+            ></PostHaveGroup>
+          ) : (
+            <PostNoGroup
+              isBroken={isBroken}
+              history={history}
+              refetch={refetchPosts}
+              key={idx}
+              item={item}
+              idx={idx}
+              dataPosts={dataPosts}
+            ></PostNoGroup>
+          )
+        })
+      )}
+      {loadMore && (
+        <div style={{ display: 'flex', justifyContent: 'center' }}>
+          <Spin spinning />
+        </div>
+      )}
+      <CreatePostDrawer
+        refetch={refetchPosts}
         isBroken={isBroken}
         handleCancel={handleCancel}
-        handleOk={handleOk}
         visible={visibleModalCreate}
-      ></ModalCreatePost>
-    </>
+      />
+    </div>
   )
 }
 

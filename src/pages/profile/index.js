@@ -1,43 +1,70 @@
 /* eslint-disable react/prop-types */
-import React, { useContext, useState } from 'react'
-import { Avatar, Menu, Button, Upload, message, notification } from 'antd'
-import { withRouter } from 'react-router-dom'
-import firebase from 'firebase/app'
+import React, { useContext, useState, useEffect } from 'react'
 import {
-  EllipsisOutlined,
-  HeartTwoTone,
-  MessageTwoTone,
-  PlusOutlined,
-  LoadingOutlined,
+  Avatar,
+  Button,
+  Upload,
+  notification,
+  List,
+  Spin,
+  Skeleton,
+  Empty
+} from 'antd'
+import { withRouter } from 'react-router-dom'
+import {
   CameraFilled,
-  CheckOutlined,
-  CloseOutlined,
   CheckCircleTwoTone,
-  CloseCircleTwoTone,
-  CloseCircleFilled
+  CloseCircleTwoTone
 } from '@ant-design/icons'
 
-import * as uuid from 'uuid'
 import Info from './info'
-import myMessenger from '@pages/myMessenger'
+import MyMessenger from '@pages/myMessenger'
 import MyPosts from './myPosts'
 import SavedPosts from './savedPosts'
-import { HighLightGroup, ModalPreviewImg } from '@components'
-import { brokenContext } from '../../layouts/MainLayout'
+import { ModalPreviewImg, Chat, Follow, CommunityItem } from '@components'
+import { MainContext } from '../../layouts/MainLayout'
 import { useQuery, useMutation } from '@apollo/react-hooks'
-import { GET_USER, UPDATE_USER, uploadImg } from '@shared'
+import {
+  GET_USER,
+  UPDATE_USER,
+  uploadImg,
+  GET_COMMUNITIES_BY_USER
+} from '@shared'
 import './index.scss'
 import { IContext } from '@tools'
+import * as firebase from 'firebase/app'
+import ImgCrop from 'antd-img-crop'
+import gql from 'graphql-tag'
+import MenuInfo from './menuInfo'
+export const GET_SUM_FOLLOWER_BY_USER = gql`
+  query getFollowerByUser($userId: String) {
+    getFollowerByUser(userId: $userId) {
+      _id {
+        userId
+      }
+      follower {
+        _id
+        firstname
+        lastname
+      }
+    }
+  }
+`
 
 function Profile(props) {
   const { history } = props
   const { type, userId } = props.match.params
-  const MY_USER_ID = 'tuinhune'
-  const isBroken = useContext(brokenContext)
-  const { loading, error, data, refetch } = useQuery(GET_USER, {
-    variables: { userId: userId },
-    fetchPolicy: 'no-cache'
+  const [dataCount, setDataCount] = useState([])
+  const { isBroken, chooseConversation } = useContext(MainContext)
+  const { data, refetch, loading } = useQuery(GET_USER, {
+    variables: { userId: userId }
   })
+  const { data: dataCountFollow, refetch: refetchDataCountFollow } = useQuery(
+    GET_SUM_FOLLOWER_BY_USER,
+    {
+      variables: { userId: userId }
+    }
+  )
   const [previewImg, setPreviewImg] = useState({
     isShow: false,
     imgSrc: ''
@@ -53,22 +80,29 @@ function Profile(props) {
     avatar: null
   })
   const [updateUser] = useMutation(UPDATE_USER)
-  const sendNotifollow = async () => {
-    const notificationId = uuid.v4()
-    try {
-      await firebase
-        .database()
-        .ref('notifications/' + userId + '/' + notificationId)
-        .set({
-          action: 'follow',
-          reciever: userId,
-          link: `/${MY_USER_ID}/info`,
-          content: `@${MY_USER_ID} đã bắt đầu theo dõi bạn`,
-          seen: false
-        })
-    } catch (err) {
-      console.log(err)
+  const { data: dataCommunity, loading: loadingJoined } = useQuery(
+    GET_COMMUNITIES_BY_USER,
+    {
+      variables: { userId: me?._id },
+      fetchPolicy: 'no-cache'
     }
+  )
+  useEffect(() => {
+    dataCommunity && getCount()
+  }, [dataCommunity])
+  const getCount = () => {
+    dataCommunity?.getCommunitiesByUser?.map(item => {
+      firebase
+        .database()
+        .ref(`communities/${item?.community?._id}`)
+        .on('value', snapshot => {
+          const temp = [
+            ...dataCount,
+            { ...snapshot.val(), id: item?.community?._id }
+          ]
+          setDataCount(temp)
+        })
+    })
   }
   const uploadButtonCover =
     isMe &&
@@ -88,9 +122,9 @@ function Profile(props) {
           listType="picture-card"
           className="icon-uploader"
           showUploadList={false}
-          action="https://www.mocky.io/v2/5cc8019d300000980a055e76"
+          action={file => handleChangeCover(file)}
           beforeUpload={beforeUpload}
-          onChange={info => handleChangeCover(info)}
+          // onChange={info => handleChangeCover(info)}
         >
           <CameraFilled style={{ fontSize: 25, color: '#fff' }} />
         </Upload>
@@ -126,24 +160,27 @@ function Profile(props) {
         </Button>
       </div>
     ))
+
   const uploadButtonAvt =
     isMe &&
-    (!img.avatar ? (
+    (!img?.avatar ? (
       <div
         className="avatar-uploader"
         style={{ position: 'absolute', bottom: 5, right: 5 }}
       >
-        <Upload
-          name="avatar"
-          listType="picture-card"
-          className="icon-avt-uploader"
-          showUploadList={false}
-          action="https://www.mocky.io/v2/5cc8019d300000980a055e76"
-          beforeUpload={beforeUpload}
-          onChange={info => handleChangeAvatar(info)}
-        >
-          <CameraFilled style={{ fontSize: 23 }} />
-        </Upload>
+        <ImgCrop rotate shape="round">
+          <Upload
+            name="avatar"
+            listType="picture-card"
+            className="icon-avt-uploader"
+            showUploadList={false}
+            action={file => handleChangeAvatar(file)}
+            beforeUpload={beforeUpload}
+            // onChange={info => handleChangeAvatar(info)}
+          >
+            <CameraFilled style={{ fontSize: 23 }} />
+          </Upload>
+        </ImgCrop>
       </div>
     ) : (
       <div
@@ -169,66 +206,25 @@ function Profile(props) {
         <CloseCircleTwoTone twoToneColor="red" onClick={() => handleCancel()} />
       </div>
     ))
-  function getBase64(img, callback) {
-    const reader = new FileReader()
-    reader.addEventListener('load', () => callback(reader.result))
-    reader.readAsDataURL(img)
+  const handleChangeAvatar = async file => {
+    setLoadingImg({ coverPhoto: false, avatar: true })
+    uploadImg(file).then(url => {
+      setImg({
+        coverPhoto: null,
+        avatar: url
+      })
+      setLoadingImg({ ...loadingImg, avatar: false })
+    })
   }
-  const handleChangeAvatar = async info => {
-    setLoadingImg({
-      ...loadingImg,
-      coverPhoto: false
-    })
-    setImg({
-      ...img,
-      coverPhoto: null
-    })
-    if (info.file.status === 'uploading') {
-      setLoadingImg({
-        ...loadingImg,
-        avatar: true
+  const handleChangeCover = file => {
+    setLoadingImg({ avatar: false, coverPhoto: true })
+    uploadImg(file).then(url => {
+      setImg({
+        avatar: null,
+        coverPhoto: url
       })
-      return
-    }
-    if (info.file.status === 'done') {
-      // Get this url from response in real world.
-      getBase64(info.file.originFileObj, async imageUrl => {
-        const url = await uploadImg(imageUrl)
-        setLoadingImg({ ...loadingImg, avatar: false })
-        setImg({
-          ...img,
-          avatar: url
-        })
-      })
-    }
-  }
-  const handleChangeCover = info => {
-    setLoadingImg({
-      ...loadingImg,
-      avatar: false
+      setLoadingImg({ ...loadingImg, coverPhoto: false })
     })
-    setImg({
-      ...img,
-      avatar: null
-    })
-    if (info.file.status === 'uploading') {
-      setLoadingImg({
-        ...loadingImg,
-        coverPhoto: true
-      })
-      return
-    }
-    if (info.file.status === 'done') {
-      // Get this url from response in real world.
-      getBase64(info.file.originFileObj, async imageUrl => {
-        const url = await uploadImg(imageUrl)
-        setLoadingImg({ ...loadingImg, coverPhoto: false })
-        setImg({
-          ...img,
-          coverPhoto: url
-        })
-      })
-    }
   }
   function beforeUpload(file) {
     const isJpgOrPng = file.type === 'image/jpeg' || file.type === 'image/png'
@@ -248,8 +244,8 @@ function Profile(props) {
         userId: userId,
         editUser: {
           coverPhoto:
-            type === 'coverPhoto' ? img.coverPhoto : data?.getUser.coverPhoto,
-          avatar: type === 'avatar' ? img.avatar : data?.getUser.avatar
+            type === 'coverPhoto' ? img?.coverPhoto : data?.getUser?.coverPhoto,
+          avatar: type === 'avatar' ? img?.avatar : data?.getUser?.avatar
         }
       }
     })
@@ -265,217 +261,228 @@ function Profile(props) {
   }
   const handleCancel = () => {
     setLoadingImg({
-      coverPhoto: false,
-      avatar: false
+      avatar: false,
+      coverPhoto: false
     })
     setImg({
-      coverPhoto: null,
-      avatar: null
+      avatar: null,
+      coverPhoto: null
     })
   }
-  return (
+  return loading ? (
+    <Skeleton active avatar />
+  ) : data?.getUser ? (
     <>
-      {type !== 'messenger' && (
-        <>
-          <div className="cover-uploader">
+      <div>
+        <div>
+          <div
+            style={{
+              position: 'relative',
+              width: '100%',
+              height: '250px',
+              backgroundColor: '#ccc'
+            }}
+          >
+            {(img.coverPhoto || data?.getUser.coverPhoto) && (
+              <img
+                onClick={() => {
+                  setPreviewImg({
+                    isShow: true,
+                    imgSrc: img.coverPhoto || data?.getUser.coverPhoto
+                  })
+                }}
+                className="cover-img"
+                style={{ objectFit: 'cover', height: 250, width: '100%' }}
+                // alt='example'
+                src={img.coverPhoto || data?.getUser.coverPhoto}
+              />
+            )}
+            {/* {loadingImg.coverPhoto && ( */}
+            {img.coverPhoto && (
+              <div
+                className="btn-saveCover"
+                style={{
+                  position: 'absolute',
+                  width: '100%',
+                  height: '100%',
+                  top: 0,
+                  display: 'flex',
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  backgroundColor: loadingImg.coverPhoto && 'rgba(0,0,0,0.7)'
+                }}
+              >
+                {/* <LoadingOutlined
+                    style={{
+                      fontSize: 30,
+                      color: '#fff'
+                    }}
+                  /> */}
+                <Spin spinning={loadingImg.coverPhoto} size="large" />
+              </div>
+            )}
+            {/* )} */}
+            {uploadButtonCover}
+          </div>
+        </div>
+        <div
+          style={{
+            backgroundColor: 'rgba(255,255,255,0.7)',
+            width: '100%',
+            display: 'flex',
+            marginTop: -95,
+            justifyContent: 'space-between'
+          }}
+        >
+          <div style={{ display: 'flex', width: '100%' }}>
             <div
               style={{
                 position: 'relative',
-                width: '100%',
-                height: '250px',
-                backgroundColor: '#ccc'
+                width: 130,
+                height: 130,
+                marginRight: 30
               }}
             >
-              {(img.coverPhoto || data?.getUser.coverPhoto) && (
-                <img
-                  className="cover-img"
-                  style={{ objectFit: 'cover', height: 250, width: '100%' }}
-                  // alt='example'
-                  src={img.coverPhoto || data?.getUser.coverPhoto}
+              {(data?.getUser?.avatar || img?.avatar) && (
+                <Avatar
                   onClick={() => {
                     setPreviewImg({
                       isShow: true,
-                      imgSrc: img.coverPhoto || data?.getUser.coverPhoto
+                      imgSrc: img?.avatar || data?.getUser?.avatar
                     })
                   }}
+                  className="img-avt"
+                  style={{ border: '2px solid black', objectFit: 'cover' }}
+                  shape="circle"
+                  size={130}
+                  src={img?.avatar || data?.getUser?.avatar}
                 />
               )}
-              {loadingImg.coverPhoto && (
-                <LoadingOutlined
+              {/* {loadingImg.avatar && ( */}
+              {img.avatar && (
+                <div
+                  className="btn-saveAvt"
                   style={{
-                    fontSize: 30,
+                    fontSize: 25,
+                    borderRadius: '50%',
                     position: 'absolute',
-                    top: 'calc(50% - 15px)',
-                    left: 'calc(50% - 15px)'
+                    width: '100%',
+                    height: '100%',
+                    top: 0,
+                    display: 'flex',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    backgroundColor: loadingImg.avatar && 'rgba(0,0,0,0.6)'
                   }}
-                />
+                >
+                  {/* <LoadingOutlined
+                      style={{
+                        fontSize: 30,
+                        color: '#fff'
+                      }}
+                    /> */}
+                  <Spin spinning={loadingImg.avatar} />
+                </div>
               )}
-              {uploadButtonCover}
+              {uploadButtonAvt}
+              {/* )} */}
             </div>
-          </div>
-          <div
-            style={{
-              backgroundColor: '#fff',
-              width: '100%',
-              display: 'flex',
-              marginTop: -95,
-              justifyContent: 'space-between'
-            }}
-          >
-            <div style={{ display: 'flex', width: '100%' }}>
+            <div style={{ marginTop: 100, marginBottom: 0, width: '90%' }}>
               <div
                 style={{
-                  position: 'relative',
-                  width: 130,
-                  height: 130,
-                  marginRight: 30
+                  display: 'flex',
+                  justifyContent: isBroken ? 'flex-start' : 'space-between'
                 }}
               >
-                {(data?.getUser.avatar || img.avatar) && (
-                  <Avatar
-                    className="img-avt"
-                    style={{ border: '2px solid black', objectFit: 'cover' }}
-                    shape="circle"
-                    size={130}
-                    src={img.avatar || data?.getUser.avatar}
-                    onClick={() => {
-                      setPreviewImg({
-                        isShow: true,
-                        imgSrc: img.avatar || data?.getUser.avatar
-                      })
-                    }}
-                  />
-                )}
-                {uploadButtonAvt}
-                {loadingImg.avatar && (
-                  <LoadingOutlined
-                    style={{
-                      fontSize: 30,
-                      position: 'absolute',
-                      top: 'calc(50% - 15px)',
-                      left: 'calc(50% - 15px)',
-                      color: '#fff'
-                    }}
-                  />
-                )}
-              </div>
-              <div style={{ marginTop: 100, marginBottom: 0, width: '90%' }}>
-                <div
+                <p
                   style={{
-                    display: 'flex',
-                    justifyContent: isBroken ? 'flex-start' : 'space-between'
+                    fontWeight: 'bolder',
+                    fontSize: 20,
+                    color: 'black',
+                    textShadow: '0px 2px 2px rgba(0, 0, 0, 0.2)'
                   }}
                 >
-                  <p
-                    style={{
-                      fontWeight: 'bolder',
-                      fontSize: 20,
-                      color: 'black'
-                    }}
-                  >
-                    {`${data?.getUser.firstname} ${data?.getUser.lastname}`}
-                  </p>
-                  <div>
-                    {!isMe &&
-                      (!isBroken ? (
-                        <>
-                          <Button
-                            type="ghost"
-                            icon={<HeartTwoTone />}
-                            onClick={sendNotifollow}
-                          >
-                            Theo dõi
-                          </Button>
-                          <Button type="ghost" icon={<MessageTwoTone />}>
-                            Nhắn tin
-                          </Button>
-                        </>
-                      ) : (
-                        <div style={{ marginTop: 5 }}>
-                          <HeartTwoTone style={{ marginLeft: 10 }} />
-                          <MessageTwoTone style={{ marginLeft: 10 }} />
-                        </div>
-                      ))}
-                  </div>
-                </div>
-                <Menu
-                  selectedKeys={[type]}
-                  //   onSelect={(e) => {
-                  //     // setKeyMenu(e.key)
-                  //     // console.log(keyMenu)
-                  //   }
-                  //   }
-                  style={{
-                    marginTop: -30,
-                    // color: 'black',
-                    fontSize: 15,
-                    fontWeight: 550,
-                    width: isBroken ? '60vw' : '35vw',
-                    backgroundColor: 'initial'
-                  }}
-                  overflowedIndicator={<EllipsisOutlined color="black" />}
-                  mode="horizontal"
-                >
-                  <Menu.Item
-                    onClick={() => history.push(`/${userId}/info`)}
-                    key="info"
-                  >
-                    Thông tin
-                  </Menu.Item>
-                  {isBroken && (
-                    <Menu.Item
-                      onClick={() => history.push(`/${userId}/messenger`)}
-                      key="mail"
-                    >
-                      Tin nhắn
-                    </Menu.Item>
+                  {`${data?.getUser.firstname} ${data?.getUser.lastname}`}{' '}
+                  {data?.getUser?.expert?.isVerify && <CheckCircleTwoTone />}
+                </p>
+                <div>
+                  {!isMe && (
+                    <div>
+                      <Follow
+                        refetchDataCountFollow={refetchDataCountFollow}
+                        follower={{ userId: userId, followerId: me?._id }}
+                      />
+                      <Chat
+                        chooseConversation={(idChat, userId) =>
+                          chooseConversation(idChat, userId)
+                        }
+                        members={[me?._id, userId]}
+                        history={history}
+                        isBroken={isBroken}
+                      ></Chat>
+                    </div>
                   )}
-                  <Menu.Item
-                    onClick={() => history.push(`/${userId}/savedposts`)}
-                    key="savedposts"
-                  >
-                    Bài viết đã lưu
-                  </Menu.Item>
-                  <Menu.Item
-                    onClick={() => history.push(`/${userId}/myposts`)}
-                    key="myposts"
-                  >
-                    Bài viết của tôi
-                  </Menu.Item>
-                  <Menu.Item
-                    onClick={() => history.push(`/${userId}/joinedGroup`)}
-                    key="joinedGroup"
-                  >
-                    Cộng đồng đã tham gia
-                  </Menu.Item>
-                </Menu>
+                </div>
               </div>
+              {isMe && (
+                <MenuInfo
+                  isBroken={isBroken}
+                  userId={userId}
+                  type={type}
+                  isMe={isMe}
+                  history={history}
+                />
+              )}
             </div>
           </div>
-          <br />{' '}
-        </>
-      )}
+        </div>
+        <br />{' '}
+      </div>
       <div
         style={{
-          backgroundColor: type === 'info' ? '#fff' : 'aliceblue',
+          backgroundColor:
+            type === 'info' ? 'rgba(255,255,255,0.7)' : 'aliceblue',
           padding: type === 'info' && 16
         }}
       >
-        {type === 'info' && <Info userInfo={data?.getUser} />}
-        {type === 'messenger' && <myMessenger userInfo={data?.getUser} />}
+        {type === 'info' && (
+          <Info
+            isBroken={isBroken}
+            userInfo={data?.getUser}
+            isMe={isMe}
+            dataCountFollow={dataCountFollow}
+          />
+        )}
+        {/* {type === 'messenger' && <MyMessenger userInfo={data?.getUser} />} */}
         {type === 'myposts' && (
           <MyPosts history={history} userInfo={data?.getUser} />
         )}
         {type === 'savedposts' && (
           <SavedPosts history={history} userInfo={data?.getUser} />
         )}
-        {type === 'joinedGroup' && <HighLightGroup userInfo={data?.getUser} />}
+        {type === 'joinedGroup' &&
+          (loadingJoined ? (
+            <Skeleton active />
+          ) : (
+            <List
+              itemLayout="horizontal"
+              dataSource={dataCount}
+              renderItem={item => (
+                <CommunityItem
+                  item={item}
+                  // data={dataCommunity?.getCommunitiesByUser}
+                />
+              )}
+            />
+          ))}
       </div>
       <ModalPreviewImg
         previewImg={previewImg}
         onCancel={() => setPreviewImg({ ...previewImg, isShow: false })}
       />
     </>
+  ) : (
+    <Empty description="Không còn khả dụng" />
   )
 }
 

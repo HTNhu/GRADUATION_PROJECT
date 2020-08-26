@@ -11,8 +11,9 @@ const SdkUtils = {
   initFacebookSdk() {
     this.importSdk('https://connect.facebook.net/en_US/sdk.js', () => {
       FB.init({
-        appId: '2569214810002562',
+        appId: process.env.FACEBOOK_APP_ID,
         autoLogAppEvents: true,
+        cookie: true,
         xfbml: true,
         version: 'v7.0'
       })
@@ -23,8 +24,7 @@ const SdkUtils = {
       gapi.load('auth2', () => {
         gapi.auth2
           .init({
-            client_id:
-              '817522585821-m2s87dbeatldlecao9pavqtm98a87tse.apps.googleusercontent.com'
+            client_id: process.env.GOOGLE_OAUTH_CLIENT_ID
           })
           .then(
             () => {},
@@ -44,12 +44,30 @@ const SdkUtils = {
               }
             },
             {
-              scope: 'email,user_birthday,user_gender,user_link'
+              scope: 'public_profile,email'
             }
           )
+        } else {
+          resolve(response.authResponse)
         }
       })
     })
+  },
+  shareFB(post) {
+    post &&
+      FB.ui(
+        {
+          method: 'share',
+          display: 'popup',
+          href: `${window.location.origin}/post-detail/${post?._id}`,
+          hashtag: '#giadinhtk',
+          quote: `Bài viết "${post?.title}" được chia sẻ bởi ${
+            post?.createdBy?.firstname
+          } tại website ${window.location.origin}. Tham gia cùng mình để chia sẻ kinh nghiệm chăm sóc con cái nhé!`
+        },
+        // callback
+        function (response) {}
+      )
   },
   async logoutFB() {
     FB.logout()

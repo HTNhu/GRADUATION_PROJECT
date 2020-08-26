@@ -1,71 +1,64 @@
 /* eslint-disable react/prop-types */
-import React, { useState, useEffect, useContext } from 'react'
-import { Comment, Avatar, List, Modal } from 'antd'
-import moment from 'moment'
-import firebase from 'firebase/app'
-import * as uuid from 'uuid'
+import React, { useState, useContext, useLayoutEffect, useEffect } from 'react'
+import { Comment, Avatar, List } from 'antd'
+import * as firebase from 'firebase/app'
 import './index.scss'
-import { InputCustome, ModalPreviewImg } from '@components'
+import { InputCustomize } from '@components'
 import { useHistory } from 'react-router-dom'
-// import { useHistory } from 'react-router-dom'
-import reactStringReplace from 'react-string-replace'
 import { IContext } from '@tools'
-// const MY_USER_ID = 'tuinhune'
-const CommentList = ({ comments, showMore, idPost }) => {
+import CommentItem from './CommentItem'
+import { replaceToxicWords } from '@shared'
+
+const CommentList = ({ comments, showMore, idPost, hashNoti, setHashNoti }) => {
   const history = useHistory()
-  const { me } = useContext(IContext)
-  const [previewImg, setPreviewImg] = useState({
-    isShow: false,
-    imgSrc: ''
-  })
+  const { me, isAuth, openLoginModal } = useContext(IContext)
   const [rep, setRep] = useState({})
+
   const [showMoreRep, setShowMoreRep] = useState({ idParent: null, rows: 0 })
   const [arrTag, setArrTag] = useState([])
   let lessComment = []
-  lessComment = comments.slice(comments.length - showMore, comments.length - 1)
-
+  lessComment =
+    showMore < comments.length ? comments.slice(0, showMore) : comments
+  useEffect(() => {
+    var elmnt =
+      hashNoti && hashNoti.length !== 1
+        ? document.getElementById(`parent-cmt-${hashNoti[1]}`)
+        : null
+    elmnt && elmnt.scrollIntoView()
+    hashNoti &&
+      hashNoti?.length !== 1 &&
+      document.getElementById(`input-custom-${idPost}`).focus()
+  }, [])
   const onAdd = mentions => {
     setArrTag(mentions)
   }
-  // const sendNotiComment = async (userId, postId) => {
-  //   const notificationId = uuid.v4()
-  //   try {
-  //     await firebase.database().ref('notifications/' + userId + '/' + notificationId).set({
-  //       action: 'comment',
-  //       reciever: userId,
-  //       link: `/postdetail/${postId}`,
-  //       content: `@${MY_USER_ID} đã bình luận về bài viết của bạn`,
-  //       seen: false
-  //     })
-  //   } catch (err) {
-  //     console.log(err)
-  //   }
-  // }
-  const sendNotiTagReply = async (userId, postId) => {
-    const notificationId = uuid.v4()
+  const replyTo = repTo => {
+    setRep(repTo)
+  }
+  const sendNotiTagReply = async (postId, idCmt) => {
+    const notificationId = +new Date()
     arrTag &&
       arrTag.map(async item => {
         try {
-          await firebase
-            .database()
-            .ref('notifications/' + item.id + '/' + notificationId)
-            .set({
-              action: 'tag',
-              reciever: item.id,
-              link: `/postdetail/${postId}`,
-              content: `${me?.firstname} đã nhắc đến bạn trong bình luận`,
-              seen: false
-            })
+          item?.id !== me?._id &&
+            (await firebase
+              .database()
+              .ref('notifications/' + item?.id + '/' + notificationId)
+              .set({
+                action: 'tag',
+                id: rep.commentId,
+                reciever: item?.id,
+                link: `/post-detail/${postId}#${rep.commentId}#${idCmt}`,
+                content: `${me?.firstname} đã nhắc đến bạn trong bình luận`,
+                seen: false,
+                createdAt: +new Date()
+              }))
         } catch (err) {
           console.log(err)
         }
       })
   }
   const reply = async (value, img) => {
-    const cmt = (await comments.filter(item => item.id === rep.commentId)[0]
-      .replies)
-      ? comments.filter(item => item.id === rep.commentId)[0].replies
-      : []
     const cmtMention = (await comments.filter(
       item => item.id === rep.commentId
     )[0].mention)
@@ -82,252 +75,176 @@ const CommentList = ({ comments, showMore, idPost }) => {
             }
           ]
         : [...cmtMention]
-    // lessCommentRep = cmt.slice(cmt.length - showMoreRep, cmt.length - 1)
-    const repValue = [
-      ...cmt,
-      {
-        content: { message: value, img: img && img },
-        timestamp: new Date().getTime(),
-        author: { id: `${me?._id}`, name: `${me?.firstname}` },
-        photo: me?.avatar
-      }
-    ]
+    const idCmt = new Date().getTime()
     try {
+      await firebase
+        .database()
+        .ref(`posts/${idPost}/comments/${rep.commentId}/replies/${idCmt}`)
+        .set({
+          content: { message: value, img: img && img },
+          timestamp: new Date().getTime(),
+          author: me?._id
+        })
       await firebase
         .database()
         .ref(`posts/${idPost}/comments/` + rep.commentId)
         .update({
-          mention: mentions,
-          replies: repValue
+          mention: mentions // replies: repValue
         })
+      if (replaceToxicWords(value).trim() !== value.trim()) {
+        firebase
+          .database()
+          .ref(`reports/comments/${me?._id}/${+new Date()}`)
+          .set({
+            id: rep.commentId,
+            repId: idCmt,
+            postId: idPost,
+            reason: value,
+            createdAt: +new Date()
+          })
+      }
     } catch (error) {
       console.log(error)
     }
-    await sendNotiTagReply(value, idPost)
+    await sendNotiTagReply(idPost, idCmt)
     setRep({})
   }
   return (
     <>
-      {' '}
       <List
-        dataSource={comments.length < showMore ? comments : lessComment}
-        // header={`${comments.length} ${comments.length > 1 ? 'replies' : 'reply'}`}
+        dataSource={comments?.length <= showMore ? comments : lessComment}
+        // header={`${comments?.length} ${comments?.length > 1 ? 'replies' : 'reply'}`}
         itemLayout="horizontal"
-        renderItem={comment => (
-          <>
-            <Comment
-              id={`parent-cmt-${comment.id}`}
-              actions={[
-                <span
-                  onClick={() => {
-                    // setArrTag([{id: comment.author.id, display: comment.author.name }])
-                    setRep({ commentId: comment.id, author: comment.author })
-                  }}
-                  key="comment-basic-reply-to"
-                  on
-                >
-                  Reply to
-                </span>
-              ]}
-              author={
-                <a
-                  onClick={() => history.push(`/${comment.author.id}/info`)}
-                  style={{ color: 'black', fontSize: 14 }}
-                >
-                  {comment.author.name}
-                </a>
-              }
-              avatar={comment.photo}
-              content={
-                <>
-                  <div style={{ display: 'flex', overflowX: 'auto' }}>
-                    {comment.content.img && (
-                      <div className="img-cmt" style={{ display: 'flex' }}>
-                        <img
-                          style={{
-                            height: 160,
-                            width: 160,
-                            objectFit: 'cover',
-                            borderRadius: 15
-                          }}
-                          src={comment.content.img}
-                          onClick={() => {
-                            setPreviewImg({
-                              isShow: true,
-                              imgSrc: comment.content.img
-                            })
-                          }}
+        renderItem={comment => {
+          return (
+            <>
+              <CommentItem
+                idPost={idPost}
+                id={comment.id}
+                key={comment.id}
+                comment={comment}
+                idParent={comment.id}
+                replyTo={isAuth ? replyTo : () => openLoginModal()}
+                type="parent"
+                history={history}
+              ></CommentItem>
+              {rep.commentId === comment.id && (
+                <Comment
+                  className={`rep-input ${comment.id}`}
+                  avatar={<Avatar src={me?.avatar} alt="Han Solo" />}
+                  content={
+                    <InputCustomize
+                      replyAuthor={rep && rep.author}
+                      idElement={comment.id}
+                      onSubmit={isAuth ? reply : () => openLoginModal()}
+                      placeholder="Nhập bình luận"
+                      mentions={comment.mention}
+                      onAdd={onAdd}
+                    />
+                  }
+                />
+              )}
+              {comment.repliesArr &&
+                comment.repliesArr?.length - 1 > showMoreRep.rows && (
+                  <a
+                    style={{ textAlign: 'left', marginLeft: '10%' }}
+                    onClick={() => {
+                      setShowMoreRep({
+                        idParent: comment.id,
+                        rows:
+                          comment.id === showMoreRep.idParent
+                            ? showMoreRep.rows + 1
+                            : 1
+                      })
+                      setHashNoti([])
+                    }}
+                  >
+                    Xem thêm{' '}
+                    {comment.id === showMoreRep.idParent
+                      ? comment.repliesArr?.length - showMoreRep.rows - 1
+                      : comment.repliesArr?.length - 1}{' '}
+                    câu trả lời
+                  </a>
+                )}
+              {comment.repliesArr &&
+                (hashNoti && hashNoti[2]
+                  ? comment.repliesArr
+                      .filter(item => item.id === hashNoti[2])
+                      .map((reply, idx) => (
+                        <CommentItem
+                          idPost={idPost}
+                          key={idx}
+                          comment={reply}
+                          idParent={comment.id}
+                          replyTo={replyTo}
+                          type="reply"
+                          history={history}
                         />
-                      </div>
-                    )}
-                  </div>
-                  <p>{comment.content.message.trim()}</p>
-                </>
-              }
-              datetime={moment(comment.timestamp).fromNow()}
-            />
-            {comment.replies && comment.replies.length - 1 > showMoreRep.rows && (
-              <a
-                style={{ textAlign: 'left', marginLeft: '10%' }}
-                onClick={() =>
-                  setShowMoreRep({
-                    idParent: comment.id,
-                    rows:
-                      comment.id === showMoreRep.idParent
-                        ? showMoreRep.rows + 2
-                        : 2
-                  })
-                }
-              >
-                Xem thêm{' '}
-                {comment.id === showMoreRep.idParent
-                  ? comment.replies.length - showMoreRep.rows
-                  : comment.replies.length - 1}{' '}
-                câu trả lời
-              </a>
-            )}
-            {rep.commentId === comment.id && (
-              <Comment
-                className={`rep-input ${comment.id}`}
-                avatar={<Avatar src={me?.avatar} alt="Han Solo" />}
-                content={
-                  <InputCustome
-                    replyAuthor={rep && rep.author}
-                    idElement={comment.id}
-                    onSubmit={reply}
-                    placeholder="Nhập bình luận"
-                    mentions={comment.mention}
-                    onAdd={onAdd}
-                    // value={value}
-                  />
-                }
-              />
-            )}
-            {comment.replies &&
-              comment.replies
-                .sort((a, b) => b.timestamp - a.timestamp)
-                .slice(
-                  0,
-                  comment.id === showMoreRep?.idParent ? showMoreRep.rows : 1
-                )
-                .map((reply, idx) => (
-                  <Comment
-                    key={idx}
-                    className={`reply ${comment.id}`}
-                    actions={[
-                      <span
-                        onClick={() => {
-                          // setArrTag([...arrTag, {id: reply.author.id, display: reply.author.name }])
-                          // console.log(arrTag, 'arRepff', reply.author, 'đf')
-                          setRep({
-                            commentId: comment.id,
-                            author: reply.author
-                          })
-                        }}
-                        key="comment-basic-reply-to"
-                        on
-                      >
-                        Reply to
-                      </span>
-                    ]}
-                    author={
-                      <a
-                        style={{ color: 'black', fontSize: 14 }}
-                        onClick={() => history.push(`/${reply.author.id}/info`)}
-                      >
-                        {reply.author.name}
-                      </a>
-                    }
-                    avatar={reply.photo}
-                    content={
-                      <>
-                        <div style={{ display: 'flex', overflowX: 'auto' }}>
-                          {reply.content.img && (
-                            <div
-                              className="img-cmt"
-                              style={{
-                                display: 'flex'
-                                // margin: '5px 0 0 5px'
-                              }}
-                            >
-                              <img
-                                style={{
-                                  height: 160,
-                                  width: 160,
-                                  objectFit: 'cover',
-                                  borderRadius: 15
-                                }}
-                                src={reply.content.img}
-                                onClick={() => {
-                                  setPreviewImg({
-                                    isShow: true,
-                                    imgSrc: reply.content.img
-                                  })
-                                }}
-                              />
-                            </div>
-                          )}
-                        </div>
-                        <p
-                          dangerouslySetInnerHTML={{
-                            __html: reply.content.message.trim()
-                          }}
-                          style={{ display: 'inline' }}
-                          className="rep-content"
+                      ))
+                  : comment.repliesArr
+                      .sort((a, b) => a.timestamp - b.timestamp)
+                      .slice(
+                        comment.id === showMoreRep?.idParent
+                          ? comment.repliesArr.length - showMoreRep.rows - 1
+                          : comment.repliesArr.length - 1,
+                        comment.repliesArr.length
+                      )
+                      .map((reply, idx) => (
+                        <CommentItem
+                          idPost={idPost}
+                          key={idx}
+                          comment={reply}
+                          idParent={comment.id}
+                          replyTo={replyTo}
+                          type="reply"
+                          history={history}
                         />
-                      </>
-                    }
-                    datetime={moment(reply.timestamp).fromNow()}
-                  />
-                ))}
-          </>
-        )}
+                      )))}
+            </>
+          )
+        }}
       />
-      <ModalPreviewImg
-        previewImg={previewImg}
-        onCancel={() => setPreviewImg({ ...previewImg, isShow: false })}
-      />
-      {/* <Modal
-        visible={previewImg.isShow}
-        footer={null}
-        onCancel={() => setPreviewImg(false)}
-      >
-        <img
-          alt="example"
-          style={{ width: '100%', paddingTop: 20 }}
-          src={previewImg.imgSrc}
-        />
-      </Modal> */}
     </>
   )
 }
 
 function CommentPost(props) {
   const [comments, setComments] = useState([])
-  const [showMore, setShowMore] = useState(3)
-  const { me } = useContext(IContext)
-  const { idPost } = props
-  useEffect(() => {
-    getComment()
-  }, [])
+  const [showMore, setShowMore] = useState(1)
+
+  const { me, isAuth, openLoginModal } = useContext(IContext)
+  const { idPost, postItem, hashNoti } = props
+  const [hash, setHash] = useState(hashNoti)
+  const [cmtNoti, setCmtNoti] = useState(null)
+  useLayoutEffect(() => {
+    idPost && getComment()
+  }, [idPost])
   const getComment = () => {
     firebase
       .database()
       .ref(`posts/${idPost}/comments`)
-      .limitToLast(showMore + 1)
+      .orderByKey()
       .on('value', snapshot => {
-        // var mess = (snapshot.val() && snapshot.val().mess1) || 'Anonymous';
-        const temp = Object.keys(snapshot.val()).map(key => ({
-          ...snapshot.val()[key],
-          id: key
-        }))
-        // temp.sort((a, b) => b.timestamp - a.timestamp)
-        setComments(temp)
+        const temp = snapshot.val()
+          ? Object.keys(snapshot.val()).map(key => ({
+              ...snapshot.val()[key],
+              id: key,
+              repliesArr: snapshot.val()[key].replies
+                ? Object.keys(snapshot.val()[key].replies).map(keyA => ({
+                    ...snapshot.val()[key].replies[keyA],
+                    id: keyA
+                  }))
+                : []
+            }))
+          : []
+
+        hash && hash[1] && setCmtNoti(temp.filter(item => item.id === hash[1]))
+        setComments(temp.reverse())
       })
   }
   const handleSubmit = async (value, img) => {
     const postId = idPost
-    const commentId = uuid.v4()
+    const commentId = +new Date()
     const mentions = [
       {
         id: `${me?._id}`,
@@ -341,11 +258,35 @@ function CommentPost(props) {
         .set({
           content: { message: value, img: img },
           timestamp: new Date().getTime(),
-          author: { id: me?._id, name: me?.firstname },
-          photo: me?.avatar,
+          author: me?._id,
+          // photo: me?.avatar,
           mention: mentions,
           replies: []
         })
+      if (replaceToxicWords(value).trim() !== value.trim()) {
+        firebase
+          .database()
+          .ref(`reports/comments/${me?._id}/${+new Date()}`)
+          .set({
+            id: commentId,
+            postId,
+            reason: value,
+            createdAt: +new Date()
+          })
+      }
+      postItem?.createdBy?._id !== me?._id &&
+        (await firebase
+          .database()
+          .ref(`notifications/${postItem?.createdBy?._id}/${+new Date()}`)
+          .set({
+            action: 'cmt',
+            id: commentId,
+            reciever: postItem?.createdBy?._id,
+            link: `/post-detail/${postId}#${commentId}`,
+            content: `${me?.firstname} đã bình luận bài viết của bạn`,
+            seen: false,
+            createdAt: +new Date()
+          }))
     } catch (error) {
       console.log(error)
     }
@@ -357,23 +298,32 @@ function CommentPost(props) {
         className={`cmt-input ${props.idPost}`}
         avatar={<Avatar src={me?.avatar} alt="Han Solo" />}
         content={
-          <InputCustome
+          <InputCustomize
             idElement={props.idPost}
-            onSubmit={handleSubmit}
+            onSubmit={isAuth ? handleSubmit : () => openLoginModal()}
             placeholder="Nhập bình luận"
             // value={value}
           />
         }
       />
-      {comments.length > 0 && (
+      {comments?.length > 0 && (
         <CommentList
+          setHashNoti={setHash}
+          hashNoti={hash}
           showMore={showMore}
           idPost={props.idPost}
-          comments={comments}
+          comments={cmtNoti || comments}
         />
       )}
-      {comments.length > showMore && (
-        <a onClick={() => setShowMore(showMore + 3)}>Xem thêm </a>
+      {comments?.length > showMore && (
+        <a
+          onClick={() => {
+            setShowMore(showMore + 2)
+            setCmtNoti(null)
+          }}
+        >
+          Xem thêm{' '}
+        </a>
       )}
     </div>
   )

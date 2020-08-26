@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useContext, useMemo } from 'react'
 import { PageHeader, Dropdown, Menu, Avatar, Divider, Layout } from 'antd'
 import {
   UserOutlined,
@@ -6,17 +6,21 @@ import {
   LeftOutlined,
   GlobalOutlined,
   ReadOutlined,
-  AreaChartOutlined
+  AreaChartOutlined,
+  UserAddOutlined
 } from '@ant-design/icons'
 import logoImgSrc from '@assets/images/logo.png'
+import { withRouter } from 'react-router-dom'
+import { IContext } from '@tools'
 
-const AdminLayout = ({ children }) => {
+const AdminLayout = ({ children, history }) => {
+  const { isSuper, logout, me } = useContext(IContext)
   const info = (
     <Menu>
       <Menu.Item disabled style={{}}>
         <Avatar src={logoImgSrc} />
         <span style={{ color: '#000', fontWeight: 'bold', marginLeft: '1em' }}>
-          Admin
+          {me?.firstname ? `${me?.lastname} ${me?.firstname}` : 'Super Admin'}
         </span>
       </Menu.Item>
       <Menu.Divider />
@@ -26,6 +30,7 @@ const AdminLayout = ({ children }) => {
       </Menu.Item>
       <Menu.Item
         onClick={() => {
+          logout()
           history.push('/login')
         }}
       >
@@ -34,6 +39,11 @@ const AdminLayout = ({ children }) => {
       </Menu.Item>
     </Menu>
   )
+
+  const location = useMemo(() => history.location.pathname.split('/')[1], [
+    history.location.pathname
+  ])
+
   return (
     <>
       <PageHeader
@@ -47,7 +57,10 @@ const AdminLayout = ({ children }) => {
             trigger={['click']}
             placement="bottomRight"
           >
-            <Avatar style={{ backgroundColor: 'rgba(0, 0, 0, .1)' }} src={logoImgSrc} />
+            <Avatar
+              style={{ backgroundColor: 'rgba(0, 0, 0, .1)' }}
+              src={logoImgSrc}
+            />
           </Dropdown>
         ]}
         footer={<Divider style={{ margin: 0 }} />}
@@ -56,28 +69,61 @@ const AdminLayout = ({ children }) => {
         <Layout.Sider>
           <Menu
             mode="inline"
-            defaultSelectedKeys={['1']}
-            defaultOpenKeys={['sub1']}
+            defaultSelectedKeys={[location]}
             style={{ height: '100%' }}
           >
-            <Menu.Item key="1" icon={<AreaChartOutlined />}>
+            <Menu.Item
+              key="dashboard"
+              onClick={() => history.push('/dashboard')}
+              icon={<AreaChartOutlined />}
+            >
               Tổng quát
             </Menu.Item>
-            <Menu.Item key="2" icon={<ReadOutlined />}>
+            <Menu.Item
+              key="posts"
+              onClick={() => history.push('/posts')}
+              icon={<ReadOutlined />}
+            >
               Bài viết
             </Menu.Item>
-            <Menu.Item key="3" icon={<UserOutlined />}>
+            <Menu.Item
+              key="members"
+              onClick={() => history.push('/members')}
+              icon={<UserOutlined />}
+            >
               Thành viên
             </Menu.Item>
-            <Menu.Item key="4" icon={<GlobalOutlined />}>
+            <Menu.Item
+              key="experts"
+              onClick={() => history.push('/awaitVerifyExpert')}
+              icon={<UserAddOutlined />}
+            >
+              Chuyên gia
+            </Menu.Item>
+            <Menu.Item
+              key="communities"
+              onClick={() => history.push('/communities')}
+              icon={<GlobalOutlined />}
+            >
               Cộng đồng
             </Menu.Item>
+            {isSuper && (
+              <Menu.Item
+                key="manage-admin"
+                onClick={() => history.push('/manage-admin')}
+                icon={<GlobalOutlined />}
+              >
+                Quản lý admin
+              </Menu.Item>
+            )}
           </Menu>
         </Layout.Sider>
-        <Layout.Content style={{ overflow: 'auto' }}>{children}</Layout.Content>
+        <Layout.Content style={{ overflow: 'auto', padding: '10px 25px' }}>
+          {children}
+        </Layout.Content>
       </Layout>
     </>
   )
 }
 
-export default AdminLayout
+export default withRouter(AdminLayout)

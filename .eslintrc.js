@@ -9,6 +9,7 @@ module.exports = {
     Atomics: 'readonly',
     SharedArrayBuffer: 'readonly'
   },
+  parser: 'babel-eslint',
   parserOptions: {
     ecmaFeatures: {
       jsx: true
@@ -25,6 +26,8 @@ module.exports = {
         beforeStatementContinuationChars: 'never'
       }
     ],
+    'react/display-name': 'off',
+    'prefer-promise-reject-errors': 'off',
     'import/no-extraneous-dependencies': 'off',
     'react/jsx-filename-extension': 'off',
     'react/jsx-one-expression-per-line': 'off',

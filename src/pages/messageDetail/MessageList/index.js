@@ -1,44 +1,52 @@
 /* eslint-disable react/prop-types */
-import React, { useEffect, useState } from 'react'
-import firebase from 'firebase/app'
+import React, { useContext, useEffect } from 'react'
+import * as firebase from 'firebase/app'
 import moment from 'moment'
 import './MessageList.scss'
 import { CloseCircleFilled } from '@ant-design/icons'
 import { Card, Avatar } from 'antd'
-import * as uuid from 'uuid'
 
-import { InputCustome } from '@components'
+import { InputCustomize } from '@components'
 import Message from '../Message'
+import { IContext } from '@tools'
+import { useQuery } from '@apollo/react-hooks'
+import { GET_USER } from '@shared'
 moment().format()
-const MY_USER_ID = 'tuinhune'
-export default function MessageList (props) {
-  const [messages, setMessages] = useState([])
 
+export default function MessageList(props) {
+  // const [messages, setMessages] = useState([])
+  const {
+    chatBox,
+    onCancelMessbox,
+    showMore,
+    setShowMore,
+    currentId
+  } = props
+  const { idChat, userId, messages, isScale } = chatBox
+  const { me } = useContext(IContext)
   useEffect(() => {
-    getMessages()
-    document.getElementById(`input-custom-${props.convention.idChat}`).focus()
-  }, [])
-  const getMessages = async () => {
-    firebase.database().ref(`messenger/${props.convention.idChat}`).on('value', (snapshot) => {
-      // var mess = (snapshot.val() && snapshot.val().mess1) || 'Anonymous';
-      const temp = Object.keys(snapshot.val()).map(key => ({ ...snapshot.val()[key], id: key }))
-      temp.sort((a, b) => a.timestamp - b.timestamp)
-      setMessages(temp)
-    })
-    const ele = await document.getElementsByClassName(`message-list-container ${props.convention.idChat}`)[0]
-    ele.scrollTop = ele.scrollHeight
-  }
-
+    // chatBox
+  }, [chatBox])
+  const { data } = useQuery(GET_USER, {
+    variables: { userId }
+    // fetchPolicy: 'no-cache'
+  })
+  useEffect(() => {
+    if (document.getElementById(`input-custom-${currentId}`)) {
+      // document.getElementById(`input-custom-${idChat}`).value = ''
+      document.getElementById(`input-custom-${currentId}`).focus()
+    }
+  }, [currentId])
   const renderMessages = () => {
     let i = 0
-    const messageCount = messages.length
+    const messageCount = messages?.length
     const tempMessages = []
 
     while (i < messageCount) {
       const previous = messages[i - 1]
       const current = messages[i]
       const next = messages[i + 1]
-      const isMine = current.author === MY_USER_ID
+      const isMine = current.author === me?._id
       const currentMoment = moment(current.timestamp)
       let prevBySameAuthor = false
       let nextBySameAuthor = false
@@ -71,8 +79,11 @@ export default function MessageList (props) {
           endsSequence = false
         }
       }
+
       tempMessages.push(
         <Message
+          idChat={idChat}
+          isLast={messageCount - 1 === i}
           key={i}
           isMine={isMine}
           startsSequence={startsSequence}
@@ -85,47 +96,107 @@ export default function MessageList (props) {
       // Proceed to the next message.
       i += 1
     }
-
     return tempMessages
   }
-  const { idChat } = props.convention
   const handleSubmit = async (value, imgList) => {
-    const chatId = `${idChat}` + '/'
-    const message = uuid.v4()
+    const message = +new Date()
     try {
-      await firebase.database().ref('messenger/' + chatId + message).set({
-        content: { message: value, img: imgList },
-        timestamp: new Date().getTime(),
-        author: 'tuinhune',
-        seen: MY_USER_ID === 'tuinhune',
-        hideWith: []
-      })
+      firebase
+        .database()
+        .ref(`messenger/${idChat}/listmessages/` + message)
+        .set({
+          content: { message: value, img: imgList },
+          timestamp: +new Date(),
+          author: me?._id,
+          seen: false,
+          hideWith: []
+        })
+        .then(() => {
+          props.showMess(idChat)
+        })
+      await firebase
+        .database()
+        .ref(`messenger/${idChat}`)
+        .update({
+          lastMess: {
+            content: { message: value, img: imgList },
+            timestamp: +new Date(),
+            author: me?._id,
+            seen: false,
+            hideWith: []
+          },
+          lastActivity: +new Date()
+        })
     } catch (error) {
       console.log(error)
     }
-    const ele = document.getElementsByClassName(`message-list-container ${idChat}`)[0]
-    // console.log(ele, 'elemu')
+    const ele = document.getElementsByClassName(
+      `message-list-container ${idChat}`
+    )[0]
     ele.scrollTop = ele.scrollHeight
   }
 
-  const { onCancelMessbox, convention, isBroken } = props
+  const { history } = props
+
   return (
-    <div className='message-list'>
-
-      <Card title={<><Avatar src={props.convention.photo}></Avatar>
-        <span style={{ marginLeft: 5 }}>{props.convention.name}</span></>}
-      className='ant-mess'
-      extra={!isBroken &&
-      // <div className='delete-messbox'>
-        <CloseCircleFilled className='delete-messbox' onClick={() => onCancelMessbox(convention)} style={{ color: '#ccc' }}/>}
-      // </div>}
-      // style={{ 10 }}
-      actions={[
-        <InputCustome idElement={convention.idChat} onSubmit={handleSubmit} placeholder='Nhạp tin nhắn' key='input'></InputCustome>
-      ]}>
-        <div className={`message-list-container ${idChat}`} >{renderMessages()}</div>
+    <div className={`message-list ${idChat}`}>
+      <Card
+        title={
+          <div>
+            <Avatar
+              src={data?.getUser?.avatar}
+              onClick={() => history.push(`/${data?.getUser?._id}/info`)}
+            ></Avatar>
+            <a
+              style={{ marginLeft: 5 }}
+              onClick={() => history.push(`/${data?.getUser?._id}/info`)}
+            >
+              {data?.getUser?.firstname}
+            </a>
+          </div>
+        }
+        className="ant-mess"
+        extra={
+          <CloseCircleFilled
+            className="delete-messbox"
+            onClick={onCancelMessbox}
+            style={{ color: '#ccc' }}
+          />
+          // )
+        }
+        actions={
+          !isScale && [
+            <InputCustomize
+              minRows={1}
+              maxRows={4}
+              idElement={idChat}
+              type="chat"
+              onSubmit={handleSubmit}
+              placeholder="Nhập tin nhắn"
+              key="input"
+            />
+          ]
+        }
+      >
+        {!isScale && (
+          <div
+            className={`message-list-container ${idChat}`}
+            onScroll={() => {
+              const ele = document.getElementsByClassName(
+                `message-list-container ${idChat}`
+              )[0]
+              props.showMess(idChat)
+              if (showMore <= messages?.length && ele.scrollTop === 0) {
+                setShowMore(showMore + 3)
+                ele.scrollTop = 30
+              }
+            }}
+          >
+            <div className="spin-chat">{/* <Spin spinning={loading} /> */}</div>
+            {renderMessages()}
+          </div>
+        )}
       </Card>
-
     </div>
   )
 }

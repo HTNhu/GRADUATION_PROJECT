@@ -73,7 +73,7 @@ module.exports = () => {
     mode: process.env.NODE_ENV,
     entry: path.resolve(__dirname, './src/index.js'),
     output: {
-      path: path.resolve(__dirname, 'dist'),
+      path: path.resolve(__dirname, 'build'),
       filename: 'static/js/[id]_[hash].bundle.js',
       chunkFilename: 'static/js/chunk/[chunkhash].bundle.js',
       publicPath: '/'
@@ -97,7 +97,8 @@ module.exports = () => {
                 ecma: 5,
                 warnings: false,
                 comparisons: false,
-                inline: 2
+                inline: 2,
+                drop_console: true
               },
               mangle: {
                 safari10: true
@@ -147,6 +148,17 @@ module.exports = () => {
               }
             },
             ...performanceLoaders
+          ]
+        },
+        {
+          test: /\.html$/,
+          use: [
+            {
+              loader: 'html-loader',
+              options: {
+                minimize: true
+              }
+            }
           ]
         },
         {
@@ -219,19 +231,6 @@ module.exports = () => {
                   'layout-header-padding': '0 0 0 24px',
                   'layout-header-background': 'transparent',
                   'layout-body-background': 'transparent'
-                  // '@primary-color': '#1890ff', // primary color for all components
-                  // '@link-color': '#1890ff', // link color
-                  // '@success-color': '#52c41a', // success state color
-                  // '@warning-color': '#faad14', // warning state color
-                  // '@error-color': '#f5222d', // error state color
-                  // '@font-size-base': '14px', // major text font size
-                  // '@heading-color': 'rgba(0, 0, 0, 0.85)', // heading text color
-                  // '@text-color': 'rgba(0, 0, 0, 0.65)', // major text color
-                  // '@text-color-secondary': 'rgba(0, 0, 0, 0.45)', // secondary text color
-                  // '@disabled-color': 'rgba(0, 0, 0, 0.25)', // disable state color
-                  // '@border-radius-base': '4px', // major border radius
-                  // '@border-color-base': '#d9d9d9', // major border color
-                  // '@box-shadow-base': '0 2px 8px rgba(0, 0, 0, 0.15)', // major shadow for layers
                 },
                 javascriptEnabled: true
               }
@@ -243,8 +242,10 @@ module.exports = () => {
     },
     devtool: 'cheap-module-eval-source-map',
     devServer: {
-      historyApiFallback: true, // set for react-router-dom
-      contentBase: './dist',
+      historyApiFallback: {
+        disableDotRule: true
+      },
+      contentBase: './build',
       // host: '0.0.0.0',
       port: process.env.PORT || 8000,
       hot: true,
@@ -264,11 +265,12 @@ module.exports = () => {
       }),
       new CleanWebpackPlugin(),
       new HtmlWebpackPlugin({
-        template: path.resolve(__dirname, './public/index.html')
+        template: path.resolve(__dirname, './public/index.html'),
+        favicon: path.resolve(__dirname, './public/favicon.ico')
       }),
       new Dotenv({
         path: devMode ? './.env' : './.env.production',
-        safe: true,
+        safe: devMode ? '.env.example' : '.env.production.example',
         systemvars: true,
         silent: true
       }),
@@ -300,7 +302,7 @@ module.exports = () => {
               maximumFileSizeToCacheInBytes: 50000000
             })
           ]),
-      new webpack.ProgressPlugin(handler),
+      ...(devMode ? [new webpack.ProgressPlugin(handler)] : []),
       ...(devMode
         ? [
             new BundleAnalyzerPlugin({

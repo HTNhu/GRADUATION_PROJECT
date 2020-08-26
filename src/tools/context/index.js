@@ -1,10 +1,11 @@
 /* eslint-disable no-undef */
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import { SdkUtils } from '@utils'
 import { withRouter } from 'react-router-dom'
 import { useQuery } from '@apollo/react-hooks'
 import gql from 'graphql-tag'
-
+import { notification } from 'antd'
+import * as firebase from 'firebase/app'
 export const IContext = React.createContext()
 
 const GET_ME = gql`
@@ -19,6 +20,7 @@ const GET_ME = gql`
       gender
       phoneNumber
       birthday
+      role
       expert {
         areasOfExpertise
         jobTitle
@@ -28,36 +30,67 @@ const GET_ME = gql`
     }
   }
 `
-
 const ContextWrapper = ({ children, history }) => {
   const [isAuth, setIsAuth] = useState(
     !!window.localStorage.getItem('access-token')
   )
-  const { data, refetch } = useQuery(GET_ME, {
-    skip: !isAuth,
-    fetchPolicy: 'no-cache'
+  const [showLogin, setShowLogin] = useState(false)
+  const { loading, data, refetch } = useQuery(GET_ME, {
+    skip: !isAuth
   })
   const authenticate = token => {
     window.localStorage.setItem('access-token', token)
     setIsAuth(true)
-    history.push('/')
-    refetch()
+    showLogin ? setShowLogin(false) : history.push('/')
+    refetch().then(() => {
+      notification.success({
+        message: 'Đăng nhập thành công',
+        placement: 'bottomRight'
+      })
+    })
   }
   const logout = () => {
+    firebase.database().ref(`messboxes/${data?.me?._id}`).remove()
     window.localStorage.clear()
+    history.push('/homepage')
     SdkUtils.logoutFB()
     SdkUtils.loginGoogle()
     setIsAuth(false)
-    refetch()
+  }
+  const openLoginModal = () => {
+    setShowLogin(true)
+  }
+  const closeLoginModal = () => {
+    setShowLogin(false)
+  }
+
+  const isSuper = useMemo(() => {
+    if (data?.me) {
+      return data?.me?.role === 'SUPERADMIN'
+    }
+  }, [data])
+  const isAdmin = useMemo(() => {
+    if (data?.me) {
+      return data?.me?.role === 'ADMIN'
+    }
+  }, [data])
+  if (loading) {
+    return null
   }
   return (
     <IContext.Provider
       value={{
         isAuth,
+        isAdmin: isAdmin,
+        isSuper: isSuper,
         authenticate,
         logout,
         me: data?.me,
-        refetchMe: refetch
+        history,
+        refetchMe: refetch,
+        showLogin: showLogin,
+        openLoginModal: openLoginModal,
+        closeLoginModal: closeLoginModal
       }}
     >
       {children}

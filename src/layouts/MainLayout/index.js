@@ -1,6 +1,5 @@
-/* eslint-disable no-unused-vars */
 /* eslint-disable react/prop-types */
-import React, { useState, useContext, useEffect } from 'react'
+import React, { useState, useContext, useEffect, useRef, useMemo } from 'react'
 import {
   Layout,
   Menu,
@@ -10,13 +9,13 @@ import {
   Typography,
   Button,
   Tooltip,
-  Badge,
-  Popover
-  // Switch
+  Modal,
+  Drawer,
+  Row,
+  Col,
+  Badge
 } from 'antd'
 import {
-  UnorderedListOutlined,
-  FormOutlined,
   BellOutlined,
   CaretDownOutlined,
   SearchOutlined,
@@ -25,79 +24,132 @@ import {
   FileTextTwoTone,
   LogoutOutlined,
   BookTwoTone,
-  HeartTwoTone
+  HeartTwoTone,
+  YoutubeOutlined,
+  HomeOutlined,
+  TeamOutlined,
+  LoginOutlined,
+  MessageOutlined
 } from '@ant-design/icons'
 import { useHistory } from 'react-router-dom'
-import firebase from 'firebase/app'
-import { Logo, HighLightGroup, Noti } from '@components'
+import * as firebase from 'firebase/app'
+import { Logo, HighLightGroup, Noti, Login } from '@components'
 import './mainlayout.scss'
-// import InputCustome from '../../components/inputCustome'
-
 import { IContext } from '@tools'
 import ConversationList from '@pages/myMessenger/ConversationList'
-import MessageList from '@pages/messageDetail/MessageList'
-// import { ThemeContext } from '../../router'
-// import HomePage from '../MainLayout/HomePage'
-// import HighLightPost from '../MainLayout/HighlightPost'
-// import ModalCreatePost from '../MainLayout/ModalCreatePost'
-import reactStringReplace from 'react-string-replace'
+import Messboxes from './messBoxes'
+import gql from 'graphql-tag'
+import { useMutation } from '@apollo/react-hooks'
+
 const { Header, Content, Sider } = Layout
 
-export const brokenContext = React.createContext(null)
-// const MY_USER_ID =
-const index = ({ children }) => {
-  const { logout, me, isAuth } = useContext(IContext)
-
-  const [isBroken, setIsBroken] = useState(false)
-  const [visible, setVisible] = useState(false)
-  const [messbox, setMessbox] = useState([])
-  // const [notifications, setNotifications] = useState([])
-
-  // useEffect(() => {
-  //   getNotification()
-  // }, [me])
-  // const getNotification = () => {
-  //   let temp
-  //   firebase.database().ref('notifications/' + me?._id).on('value', (snapshot) => {
-  //     temp = Object.keys(snapshot.val()).map(key => ({ ...snapshot.val()[key], id: key }))
-
-  //     setNotifications(temp)
-
-  //   })
-  // }
-  const chooseConvention = convention => {
-    if (messbox.findIndex(mess => mess.idChat === convention.idChat) === -1) {
-      const a = [...messbox]
-      a.push(convention)
-      setMessbox(a)
+const SEARCH_POSTS = gql`
+  mutation searchAllPosts($query: String) {
+    searchAllPosts(query: $query) {
+      _id
+      title
+      thumbnail
+      keywords
+      isActive
+      content
+      community {
+        _id
+        name
+        avatar
+      }
+      createdBy {
+        _id
+        firstname
+        lastname
+        avatar
+      }
+      createdAt
+      updatedAt
+      deletedBy {
+        _id
+        firstname
+        lastname
+        avatar
+      }
+      updatedBy {
+        _id
+        firstname
+        lastname
+        avatar
+      }
+      deletedAt
     }
-    document.getElementById(`input-custom-${convention.idChat}`).focus()
   }
+`
+
+export const MainContext = React.createContext(null)
+const index = ({ children }) => {
+  const { logout, me, isAuth, showLogin, closeLoginModal } = useContext(
+    IContext
+  )
+  const [dataCount, setDataCount] = useState([])
+  const [notifications, setNotifications] = useState([])
+  const [loading, setLoading] = useState(false)
+  useEffect(() => {
+    setLoading(true)
+    firebase
+      .database()
+      .ref('communities')
+      .on('value', snapshot => {
+        const temp = snapshot.val()
+          ? Object.keys(snapshot.val()).map(key => ({
+              ...snapshot.val()[key],
+              id: key
+            }))
+          : []
+        setDataCount(temp)
+        setLoading(false)
+      })
+  }, [])
+  const [isBroken, setIsBroken] = useState(false)
+  const [showCommunities, setShowCommunities] = useState(false)
+  const messBoxesRef = useRef()
   const history = useHistory()
+  useEffect(() => {
+    isBroken && getNotification()
+  }, [isBroken])
+  const getNotification = () => {
+    let temp
+    firebase
+      .database()
+      .ref('notifications/' + me?._id)
+      .orderByKey()
+      .limitToLast(50)
+      .on('value', snapshot => {
+        temp = snapshot.val()
+          ? Object.keys(snapshot.val()).map(key => ({
+              ...snapshot.val()[key],
+              id: key
+            }))
+          : []
+
+        setNotifications(temp.reverse())
+      })
+  }
+  const location = useMemo(() => {
+    return history.location.pathname.split('/')[1]
+  }, [history.location.pathname])
   const menu = (
     <Menu>
       <Menu.Item key="0" onClick={() => history.push(`/${me?._id}/info`)}>
-        <InfoCircleTwoTone /> Thông tin cá nhân{' '}
+        <InfoCircleTwoTone /> Thông tin cá nhân
       </Menu.Item>
-      {isBroken && (
-        <Menu.Item
-          key="1"
-          onClick={() => history.push(`/${me?._id}/messenger`)}
-        >
-          <MessageTwoTone /> Tin nhắn{' '}
-        </Menu.Item>
-      )}
       <Menu.Item key="2" onClick={() => history.push(`/${me?._id}/myposts`)}>
-        <FileTextTwoTone /> Bài viết của tôi{' '}
+        <FileTextTwoTone /> Bài viết của tôi
       </Menu.Item>
       <Menu.Item key="3" onClick={() => history.push(`/${me?._id}/savedposts`)}>
-        <BookTwoTone /> Bài viết đã lưu{' '}
+        <BookTwoTone /> Bài viết đã lưu
       </Menu.Item>
       <Menu.Item
         key="4"
         onClick={() => history.push(`/${me?._id}/joinedGroup`)}
       >
-        <HeartTwoTone /> Cộng đồng đã tham gia{' '}
+        <HeartTwoTone /> Cộng đồng đã tham gia
       </Menu.Item>
       <Menu.Divider />
       <Menu.Item key="5" onClick={logout}>
@@ -105,11 +157,23 @@ const index = ({ children }) => {
       </Menu.Item>
     </Menu>
   )
-  const onCancelMessbox = idChat => {
-    const idx = messbox.findIndex(mess => mess.idChat === idChat)
-    var arr = [...messbox]
-    arr.splice(idx, 1)
-    setMessbox([...arr])
+
+  const [searchAllPosts] = useMutation(SEARCH_POSTS)
+  const handleSearch = e => {
+    e.preventDefault()
+    const query = e.target.value
+    searchAllPosts({
+      variables: {
+        query
+      }
+    })
+      .then(({ data }) => {
+        history.push('/search-results', {
+          results: data?.searchAllPosts,
+          query
+        })
+      })
+      .catch(() => {})
   }
 
   return (
@@ -119,6 +183,7 @@ const index = ({ children }) => {
           boxShadow: '0 1px 8px #f0f1f2',
           backgroundColor: 'lightskyblue',
           position: 'fixed',
+          top: 0,
           width: '100%',
           zIndex: 10
         }}
@@ -134,112 +199,108 @@ const index = ({ children }) => {
           <div
             id="header-left"
             style={{
-              width: isBroken ? '70%' : '62%',
+              width: isBroken ? '80%' : '62%',
               display: 'flex',
-              justifyContent: 'flex-start'
+              justifyContent: 'flex-start',
+              alignItems: 'center'
             }}
           >
             <Logo
               isBroken={isBroken}
               size="medium"
-              onClick={() => history.push('/')}
+              onClick={() => {
+                // refetchPosts()
+                history.push('/homepage')
+              }}
             />
-            {
-              !isBroken ? (
-                <Input
-                  className="search-flex"
-                  style={{ height: 30, top: '1em', borderRadius: 40 }}
-                  prefix={<SearchOutlined />}
-                  placeholder="Tìm kiếm"
-                ></Input>
-              ) : (
-                // <Tooltip title='search'>
-                <Input
-                  className="search-broken"
-                  style={{ height: 30, top: '1em', borderRadius: 40 }}
-                  prefix={<SearchOutlined />}
-                  placeholder="Tìm kiếm"
-                ></Input>
-              )
-
-              /* </Tooltip> */
-            }
+            {!isBroken ? (
+              <Input
+                className="search-flex"
+                style={{ height: 30, borderRadius: 40 }}
+                prefix={<SearchOutlined />}
+                placeholder="Tìm kiếm"
+                onPressEnter={handleSearch}
+              />
+            ) : (
+              // <Tooltip title='search'>
+              <Input
+                className="search-broken"
+                style={{ height: 30, borderRadius: 40 }}
+                prefix={<SearchOutlined />}
+                placeholder="Tìm kiếm"
+                onPressEnter={handleSearch}
+              />
+            )}
           </div>
           <div
             id="header-right"
             style={{
-              width: isBroken ? '30%' : '38%',
+              width: isBroken ? '10%' : '38%',
               borderBottom: 'none',
               height: '64px',
               lineHeight: '60px',
               display: 'flex',
-              justifyContent: 'flex-end',
+              justifyContent: !isBroken && 'flex-end',
+              alignItems: 'center',
               marginRight: 10
             }}
           >
-            <Menu
-              style={{
-                backgroundColor: 'initial',
-                width: isBroken ? 50 : 120
-              }}
-              overflowedIndicator={
-                <UnorderedListOutlined style={{ fontSize: 23 }} />
-              }
-              mode="horizontal"
-            >
-              <Menu.Item onClick={() => history.push('/createpost')}>
-                {isBroken ? (
-                  <>
-                    <FormOutlined style={{ color: 'rgb(0, 152, 218)' }} />
-                    <span>Thêm bài viết</span>
-                  </>
-                ) : (
-                  <Tooltip title="Thêm bài viết" placement="bottomRight">
+            {isAuth && !isBroken && (
+              <Menu
+                style={{
+                  backgroundColor: 'initial'
+                  // width: 50
+                }}
+                // overflowedIndicator={
+                //   <UnorderedListOutlined style={{ fontSize: 23 }} />
+                // }
+                mode="horizontal"
+              >
+                <Menu.Item onClick={() => history.push('/seminars')}>
+                  <Tooltip title="Hội thảo" placement="bottom">
                     <Button
                       className="btn-round"
                       shape="circle"
-                      icon={
-                        <FormOutlined style={{ color: 'rgb(0, 152, 218)' }} />
-                      }
-                      // onClick={() => history.push('/createpost')}
+                      icon={<YoutubeOutlined />}
                     />
                   </Tooltip>
-                )}
-              </Menu.Item>
-              <Menu.Item>
-                <Noti history={history} />
-              </Menu.Item>
-            </Menu>
-            <div>
+                </Menu.Item>
+                <Menu.Item>
+                  <Noti history={history} />
+                </Menu.Item>
+              </Menu>
+            )}
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'center'
+              }}
+            >
               {isAuth ? (
                 isBroken ? (
-                  <Dropdown overlay={menu} trigger={['click']}>
-                    <a
-                      className="ant-dropdown-link"
-                      style={{ paddingLeft: 5 }}
-                      onClick={e => e.preventDefault()}
-                    >
-                      <Avatar
-                        style={{
-                          top: '0.75em',
-                          color: 'white',
-                          backgroundColor: 'rgb(0, 152, 218)',
-                          fontSize: '15px',
-                          verticalAlign: 'sub'
-                        }}
-                        size={30}
-                        src={me?.avatar}
-                      >
-                        {/* N */}
-                      </Avatar>
-                      <CaretDownOutlined />
-                    </a>
+                  <Dropdown
+                    overlay={menu}
+                    overlayStyle={{ position: 'fixed', top: 50 }}
+                    trigger={['click']}
+                  >
+                    <Avatar
+                      style={{
+                        // top: '0.75em',
+                        color: 'white',
+                        backgroundColor: 'rgb(0, 152, 218)',
+                        fontSize: '15px',
+                        verticalAlign: 'sub'
+                      }}
+                      size={30}
+                      src={me?.avatar}
+                    />
                   </Dropdown>
                 ) : (
                   <>
                     <Avatar
                       style={{
-                        top: '0.5em',
+                        // top: '0.5em',
                         color: 'white',
                         backgroundColor: 'rgb(0, 152, 218)',
                         fontSize: '14px',
@@ -247,13 +308,25 @@ const index = ({ children }) => {
                       }}
                       size={30}
                       src={me?.avatar}
+                      onClick={() => history.push(`/${me?._id}/info`)}
                     >
                       {/* N */}
                     </Avatar>
-                    <Dropdown overlay={menu} trigger={['click']}>
+                    <Dropdown
+                      overlayStyle={{
+                        position: 'fixed',
+                        top: '50px !important'
+                      }}
+                      overlay={menu}
+                      trigger={['click']}
+                    >
                       <a
                         className="ant-dropdown-link"
-                        style={{ paddingLeft: 5, fontWeight: 'bold' }}
+                        style={{
+                          paddingLeft: 5,
+                          fontWeight: 'bold',
+                          width: 'max-content'
+                        }}
                         onClick={e => e.preventDefault()}
                       >
                         {me?.firstname} <CaretDownOutlined />
@@ -261,10 +334,16 @@ const index = ({ children }) => {
                     </Dropdown>
                   </>
                 )
+              ) : isBroken ? (
+                <Button
+                  onClick={() => history.push('/login')}
+                  className="btn-round"
+                  shape="circle"
+                  icon={<LoginOutlined style={{ color: '#1890ff' }} />}
+                />
               ) : (
-                <Button type="primary" onClick={() => history.push('./login')}>
-                  {' '}
-                  Đăng nhập{' '}
+                <Button type="primary" onClick={() => history.push('/login')}>
+                  Đăng nhập
                 </Button>
               )}
               {/* <Switch onChange={ () => myTheme?.toggleTheme()} /> */}
@@ -274,13 +353,115 @@ const index = ({ children }) => {
           </div>
         </div>
       </Header>
-
+      {isBroken && (
+        <Row
+          style={{
+            top: 64,
+            zIndex: 100,
+            background: '#fff',
+            fontSize: 20,
+            color: '#000'
+          }}
+          justify="space-between"
+          className="row-menu"
+          gutter={16}
+        >
+          <Col
+            style={{
+              textAlign: 'center',
+              borderBottom:
+                location === 'homepage' ? '1px solid #1890ff' : 'none'
+            }}
+            span={4}
+            onClick={() => history.push('/homepage')}
+          >
+            {location === 'homepage' ? (
+              <HomeOutlined style={{ color: '#1890ff' }} />
+            ) : (
+              <HomeOutlined />
+            )}
+          </Col>
+          <Col
+            style={{
+              textAlign: 'center',
+              borderBottom: location === 'notify' ? '1px solid #1890ff' : 'none'
+            }}
+            span={4}
+            onClick={() => history.push('/notify')}
+          >
+            {location === 'notify' ? (
+              <Badge
+                dot={
+                  notifications?.length === 0 ||
+                  notifications?.filter(item => item.seen === false)?.length > 0
+                }
+              >
+                <BellOutlined style={{ color: '#1890ff', fontSize: 20 }} />
+              </Badge>
+            ) : (
+              <Badge
+                dot={
+                  notifications?.length === 0 ||
+                  notifications?.filter(item => item.seen === false)?.length > 0
+                }
+              >
+                <BellOutlined style={{ fontSize: 20 }} />
+              </Badge>
+            )}
+          </Col>
+          <Col
+            style={{
+              textAlign: 'center',
+              borderBottom:
+                location === 'communities' ? '1px solid #1890ff' : 'none'
+            }}
+            span={4}
+            onClick={() => history.push('/communities')}
+          >
+            <TeamOutlined
+              style={{
+                color: location === 'communities' ? '#1890ff' : 'black'
+              }}
+            />
+          </Col>
+          <Col
+            style={{
+              textAlign: 'center',
+              borderBottom:
+                location === 'seminars' ? '1px solid #1890ff' : 'none'
+            }}
+            span={4}
+            onClick={() => history.push('/seminars')}
+          >
+            {location === 'seminars' ? (
+              <YoutubeOutlined style={{ color: '#1890ff' }} />
+            ) : (
+              <YoutubeOutlined />
+            )}
+          </Col>
+          <Col
+            style={{
+              textAlign: 'center',
+              borderBottom:
+                location === 'messenger' ? '1px solid #1890ff' : 'none'
+            }}
+            span={4}
+            onClick={() => history.push(`/messenger`)}
+          >
+            {location === 'messenger' ? (
+              <MessageOutlined style={{ color: '#1890ff' }} />
+            ) : (
+              <MessageOutlined />
+            )}
+          </Col>
+        </Row>
+      )}
       <Layout
         className="home"
         style={{
-          paddingTop: isBroken ? 65 : 100,
+          paddingTop: 100,
           width: '100%',
-          paddingLeft: isBroken ? 0 : 100,
+          paddingLeft: isBroken ? 0 : '1.5em',
           margin: '0 auto',
           backgroundColor: 'aliceblue'
         }}
@@ -288,83 +469,110 @@ const index = ({ children }) => {
         <Sider
           breakpoint="lg"
           collapsedWidth={0}
-          width={isBroken ? 0 : '18%'}
+          width={isBroken ? 0 : '25%'}
           onBreakpoint={broken => setIsBroken(broken)}
-          onCollapse={collapsed => {
-            setVisible(!collapsed)
-          }}
           trigger={null}
         >
           {/* { !isBroken && <div style={{ position: 'fixed' }}> */}
           {isBroken ? null : (
             <div className="highlight-group">
               <Typography.Title level={4}>CỘNG ĐỒNG NỔI BẬT</Typography.Title>
-              <HighLightGroup></HighLightGroup>
+              <HighLightGroup
+                history={history}
+                loading={loading}
+                dataCount={dataCount}
+              ></HighLightGroup>
             </div>
           )}
           {/* </div>} */}
         </Sider>
         <Content
+          id="content-main"
           style={{
-            // backgroundColor: 'aliceblue',
             padding: isBroken ? 0 : '0 24px',
             paddingRight: !isBroken && 76,
-            marginTop: 0
-            // width: '90%'
-            // width: isAuth ? '90%' : '10%'
+            marginTop: 0,
+            marginRight: !isBroken && '17%'
           }}
         >
-          <brokenContext.Provider value={isBroken}>
+          <MainContext.Provider
+            value={{
+              isBroken,
+              chooseConversation: (idChat, userId) =>
+                messBoxesRef.current.chooseConversation(idChat, userId)
+            }}
+          >
             {children}
-          </brokenContext.Provider>
+          </MainContext.Provider>
         </Content>
-        {!isBroken && isAuth ? (
-          <Sider width="18%">
+        {!isBroken && isAuth && (
+          <Sider
+            width="17%"
+            style={{
+              position: 'fixed',
+              right: 0,
+              border: '#d5edf9 solid 2px !important',
+              backgroundColor: '#e6f4ff',
+              height: '100vh'
+            }}
+          >
             <div className="sidebarMess-mainLayout">
-              <ConversationList chooseConvention={chooseConvention} />
+              <ConversationList
+                chooseConversation={(idChat, userId) =>
+                  messBoxesRef.current.chooseConversation(idChat, userId)
+                }
+              />
             </div>
           </Sider>
-        ) : (
-          !isBroken && <Sider width="17%"></Sider>
         )}
         {!isBroken && (
           <div className="messenger-main">
             <div className="contentMess-mainLayout">
-              {messbox.map((convention, idx) => {
+              {/* {messbox.map((mess, idx) => {
                 return (
                   <div
                     key={idx}
-                    className={`contentMess-box ${convention.idChat}`}
+                    className={`contentMess-box ${mess.idChat}`}
                     style={{ display: 'flex', flexDirection: 'column' }}
                   >
                     <MessageList
+                      history={history}
                       idx={idx}
-                      onCancelMessbox={() => onCancelMessbox(convention.idChat)}
-                      convention={convention}
+                      // onCancelMessbox={() => onCancelMessbox(mess.idChat)}
+                      chatBox={mess}
                     />
                   </div>
                 )
-              })}
-              {/* <div className='contentMess-box' style={{ display: 'flex', flexDirection: 'column' }}>
-              <MessageList />
-            </div> */}
+              })} */}
+              <Messboxes ref={messBoxesRef} />
             </div>
           </div>
         )}
-        {/* {isBroken && (
-          <Drawer
-            drawerStyle={{ transition: 'all 0.2s' }}
-            width='80%'
-            placement='left'
-            closable={false}
-            bodyStyle={{ padding: 0 }}
-            visible={visible}
-            getContainer={false}
-          >
-            <HighLightGroup></HighLightGroup>
-          </Drawer>
-        )} */}
       </Layout>
+      <Modal
+        visible={showLogin}
+        title="Đăng nhập"
+        footer={null}
+        centered
+        onCancel={closeLoginModal}
+      >
+        <Login></Login>
+      </Modal>
+      <Drawer
+        width="90%"
+        closable={false}
+        visible={showCommunities}
+        onClose={() => setShowCommunities(false)}
+        title="Cộng đồng nổi bật"
+        placement="left"
+        footer={null}
+      >
+        <HighLightGroup
+          isBroken={window.innerWidth < 600 }
+          history={history}
+          setShowCommunities={setShowCommunities}
+        />
+      </Drawer>
     </Layout>
   )
 }
